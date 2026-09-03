@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: biochemical-training-exam
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
