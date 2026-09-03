@@ -9,7 +9,7 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: DATABASE_URL
-        sync: false  # 部署時手動在 Render 後台貼入 Supabase 或 Neon 的連線字串
+        sync: false  postgresql://postgres:[YOUR-PASSWORD]@db.wypchiroyugelxxlbmto.supabase.co:5432/postgres
       - key: ADMIN_KEY
         sync: false
       - key: MATERIAL_STORAGE
