@@ -9,16 +9,8 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: biochemical-training-db
-          property: connectionString
+        sync: false  # 部署時手動在 Render 後台貼入 Supabase 或 Neon 的連線字串
       - key: ADMIN_KEY
         sync: false
       - key: MATERIAL_STORAGE
         value: /var/data/materials
-
-databases:
-  - name: biochemical-training-db
-    databaseName: biochemical_training
-    plan: free
-    region: singapore
