@@ -13,7 +13,8 @@ Flask + HTML/JavaScript 的線上考核與教育訓練投影片系統。
 - 各頁籤考試、計分與合格判定
 - 附件 1 Word 匯出
 - CSV 成績匯出
-- 本機瀏覽器暫存考核紀錄
+- 考核成績集中儲存於 PostgreSQL（本機無 DATABASE_URL 時自動使用 SQLite）
+- 成績後台以 ADMIN_KEY 保護
 
 ## GitHub
 
@@ -75,12 +76,24 @@ GitHub Pages 只能提供靜態網站；本系統需要 Flask API、PPT 轉檔�
 
 ### 成績儲存
 
-目前前端考核紀錄仍使用瀏覽器 `localStorage`，因此不是多人共用的中央資料庫。若要正式讓整個科室多人使用，建議下一階段加入 SQLite/PostgreSQL + Flask API，將成績集中儲存。
+考核提交後會透過 Flask `/api/records` 寫入中央資料庫。Render 部署會自動建立 PostgreSQL，並把 `DATABASE_URL` 注入 Web Service；本機若沒有設定 `DATABASE_URL`，則使用 `data/exam_records.db` 的 SQLite。
 
-### PPT 上傳權限
+管理後台的查詢、CSV 匯出與清空紀錄需要 `X-Admin-Key`，前端會在第一次開啟成績後台時要求輸入 `ADMIN_KEY`。請勿把金鑰寫進 GitHub。
 
-目前既有前端提供 PPT 上傳/刪除功能。若部署到公開網際網路，建議下一階段加入管理者登入或 API 權限控制，避免任何訪客任意上傳/刪除教材。
+### Render 注意事項
+
+- PostgreSQL 用於集中保存考核成績。
+- Render Web Service 的本地檔案系統不應視為永久儲存；目前使用者上傳的 PPT/PPTX 仍屬伺服器本地檔案，若需要永久共享教材，建議後續改用物件儲存（例如 S3 相容服務）。
+- PPT/PPTX 轉圖仍由 Docker 內的 LibreOffice + PyMuPDF 處理。
+- `ADMIN_KEY` 必須在 Render Dashboard / Blueprint 建立時設定，不能提交到 GitHub。
 
 ## Word 匯出成績
 
 Word 匯出資料現在同時提供 `score`、`evaluationScore`、`passingScore`、`correctCount`、`wrongCount`、`totalQuestions`、`status`、`result` 等欄位，供「附件1.docx」範本使用。這可避免範本使用「評核分數」欄位時因前端沒有傳值而顯示 0。
+
+
+## 管理者教材後台
+
+登入網頁右上角「管理後台」後，可新增 PPT/PPTX、設定教材名稱/說明/考題頁籤、啟用/停用與刪除。教材會在伺服器端轉成逐頁 PNG，並保存於 Render Persistent Disk 的 `/var/data/materials`。
+
+Render 預設檔案系統是暫存的；Persistent Disk 可保留服務在重新部署/重啟後的檔案，但需要付費 Web Service。citeturn0search0turn0search1

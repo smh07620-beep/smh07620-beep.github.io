@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import threading
 import datetime
+import sqlite3
 from pathlib import Path
 
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
@@ -47,12 +48,19 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 SLIDES_DIR = STATIC_DIR / "slides"
-UPLOAD_DIR = BASE_DIR / "uploads"
+MATERIAL_STORAGE = Path(os.environ.get("MATERIAL_STORAGE", "/var/data/materials"))
+# Render Persistent Disk 建議掛載 /var/data；本機若無此路徑權限則改用專案 uploads。
+try:
+    MATERIAL_STORAGE.mkdir(parents=True, exist_ok=True)
+except OSError:
+    MATERIAL_STORAGE = BASE_DIR / "uploads"
+UPLOAD_DIR = MATERIAL_STORAGE / "ppt"
+UPLOADED_SLIDES_DIR = MATERIAL_STORAGE / "slides"
 DATA_DIR = BASE_DIR / "data"
 META_FILE = DATA_DIR / "slides_meta.json"
 TMP_DIR = BASE_DIR / "tmp_convert"
 
-for d in (SLIDES_DIR, UPLOAD_DIR, DATA_DIR, TMP_DIR):
+for d in (SLIDES_DIR, UPLOAD_DIR, UPLOADED_SLIDES_DIR, DATA_DIR, TMP_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # 如果 soffice 不在系統 PATH 中，可用環境變數指定完整路徑，例如：
@@ -62,6 +70,9 @@ SOFFICE_BIN = os.environ.get("SOFFICE_PATH", "soffice")
 
 ALLOWED_EXT = {".pptx", ".ppt"}
 MAX_UPLOAD_MB = 80
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "change-me")
+SQLITE_DB = DATA_DIR / "exam_records.db"
 
 CATEGORY_LABELS = {
     "subA1": "1-1 一致性與法定傳染病通報",
@@ -76,6 +87,167 @@ conversion_lock = threading.Lock()
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# 考核成績資料庫
+# ---------------------------------------------------------------------------
+def _db_conn():
+    """優先使用 Render/PostgreSQL；沒有 DATABASE_URL 時退回 SQLite。"""
+    if DATABASE_URL:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+            conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+            conn.autocommit = True
+            return conn, "postgres"
+        except Exception as exc:
+            app.logger.warning("PostgreSQL 連線失敗，改用 SQLite：%s", exc)
+    conn = sqlite3.connect(str(SQLITE_DB), timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn, "sqlite"
+
+
+def init_exam_db():
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS exam_records (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    emp_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    evaluator_name TEXT,
+                    evaluator_title TEXT,
+                    quiz_title TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    correct_count INTEGER NOT NULL DEFAULT 0,
+                    wrong_count INTEGER NOT NULL DEFAULT 0,
+                    answers_detail JSONB NOT NULL
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS exam_records (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    emp_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    evaluator_name TEXT,
+                    evaluator_title TEXT,
+                    quiz_title TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    correct_count INTEGER NOT NULL DEFAULT 0,
+                    wrong_count INTEGER NOT NULL DEFAULT 0,
+                    answers_detail TEXT NOT NULL
+                )
+            """)
+    finally:
+        conn.close()
+
+
+def _record_to_dict(row):
+    r = dict(row)
+    raw = r.pop("answers_detail", "[]")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = []
+    r["answersDetail"] = raw
+    r["timestamp"] = r.pop("created_at", "")
+    r["empId"] = r.pop("emp_id", "")
+    r["evaluatorName"] = r.pop("evaluator_name", "")
+    r["evaluatorTitle"] = r.pop("evaluator_title", "")
+    return r
+
+
+def require_admin():
+    supplied = request.headers.get("X-Admin-Key", "")
+    if not ADMIN_KEY or ADMIN_KEY == "change-me" or supplied != ADMIN_KEY:
+        return jsonify({"error": "未授權。請提供正確的管理者金鑰 ADMIN_KEY。"}), 401
+    return None
+
+
+init_exam_db()
+
+
+def init_materials_db():
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS materials (
+                    id TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    category TEXT NOT NULL DEFAULT '',
+                    folder TEXT NOT NULL,
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    date_added TEXT NOT NULL,
+                    storage_filename TEXT NOT NULL,
+                    active BOOLEAN NOT NULL DEFAULT TRUE
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS materials (
+                    id TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    category TEXT NOT NULL DEFAULT '',
+                    folder TEXT NOT NULL,
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    date_added TEXT NOT NULL,
+                    storage_filename TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+    finally:
+        conn.close()
+
+
+def material_row_to_dict(row):
+    r = dict(row)
+    r["isBuiltin"] = False
+    r["is_builtin"] = False
+    r["desc"] = r.pop("description", "")
+    r["dateAdded"] = r.pop("date_added", "")
+    r["pageCount"] = int(r.pop("page_count", 0) or 0)
+    r["storageFilename"] = r.pop("storage_filename", "")
+    r["active"] = bool(r.get("active", True))
+    return r
+
+
+def list_uploaded_materials(include_inactive=False):
+    conn, _ = _db_conn()
+    try:
+        sql = "SELECT * FROM materials"
+        if not include_inactive:
+            sql += " WHERE active = " + ("TRUE" if DATABASE_URL else "1")
+        sql += " ORDER BY date_added DESC"
+        return [material_row_to_dict(r) for r in conn.execute(sql).fetchall()]
+    finally:
+        conn.close()
+
+
+def get_material(material_id):
+    conn, _ = _db_conn()
+    try:
+        row = conn.execute("SELECT * FROM materials WHERE id = %s" % ("%s" if DATABASE_URL else "?"), (material_id,)).fetchone()
+        return material_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+init_materials_db()
 
 
 # ---------------------------------------------------------------------------
@@ -220,44 +392,72 @@ def convert_pptx_to_images(pptx_path: Path, out_folder: Path) -> int:
 # ---------------------------------------------------------------------------
 @app.get("/api/slides")
 def api_list_slides():
-    meta = load_meta()
-    result = []
-    for m in meta:
-        result.append(
-            {
-                **m,
-                "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""]),
-                "imageFolder": f"slides/{m['folder']}",
-                "downloadUrl": f"/download/{m['id']}",
-            }
-        )
-    # 內建排前面，上傳的依上傳時間新到舊排列
-    result.sort(key=lambda x: (not x.get("isBuiltin"), x.get("dateAdded", "")), reverse=False)
-    return jsonify(result)
+    builtin = []
+    for m in load_meta():
+        if not m.get("isBuiltin"):
+            continue
+        builtin.append({
+            **m,
+            "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""]),
+            "imageFolder": f"slides/{m['folder']}",
+            "downloadUrl": f"/download/{m['id']}",
+        })
+    uploaded = []
+    for m in list_uploaded_materials(False):
+        uploaded.append({
+            **m,
+            "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""]),
+            "imageFolder": f"uploaded-slides/{m['folder']}",
+            "downloadUrl": f"/download/{m['id']}",
+        })
+    return jsonify(builtin + uploaded)
+
+
+@app.get("/api/slides/admin")
+def api_admin_slides():
+    denied = require_admin()
+    if denied:
+        return denied
+    items = []
+    for m in load_meta():
+        if m.get("isBuiltin"):
+            items.append({**m, "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""])})
+    for m in list_uploaded_materials(True):
+        items.append({**m, "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""])})
+    return jsonify(items)
+
+
+@app.get("/uploaded-slides/<folder>/<path:filename>")
+def uploaded_slide_image(folder, filename):
+    # 僅允許以資料庫登記的 folder 存取，避免路徑穿越。
+    if Path(folder).name != folder or Path(filename).name != filename:
+        abort(404)
+    entry = get_material(folder)
+    if not entry or not entry.get("active"):
+        abort(404)
+    return send_from_directory(UPLOADED_SLIDES_DIR / folder, filename)
 
 
 @app.get("/download/<slide_id>")
 def download_slide(slide_id):
     meta = load_meta()
     entry = next((m for m in meta if m["id"] == slide_id), None)
+    if entry and entry.get("isBuiltin"):
+        return send_from_directory(STATIC_DIR, entry["filename"], as_attachment=True, download_name=entry["filename"])
+    entry = get_material(slide_id)
     if not entry:
         abort(404)
-
-    if entry.get("isBuiltin"):
-        return send_from_directory(
-            STATIC_DIR, entry["filename"], as_attachment=True, download_name=entry["filename"]
-        )
-
-    for ext in (".pptx", ".ppt"):
-        candidate = UPLOAD_DIR / f"{entry['id']}{ext}"
-        if candidate.exists():
-            return send_file(candidate, as_attachment=True, download_name=entry["filename"])
-
-    abort(404)
+    path = UPLOAD_DIR / entry["id"] / entry["storageFilename"]
+    if not path.exists():
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=entry["filename"])
 
 
 @app.post("/api/slides/upload")
 def api_upload_slide():
+    denied = require_admin()
+    if denied:
+        return denied
     if "file" not in request.files:
         return jsonify({"error": "未收到檔案"}), 400
 
@@ -265,65 +465,179 @@ def api_upload_slide():
     category = request.form.get("category", "")
     if category not in CATEGORY_LABELS:
         category = ""
+    title = request.form.get("title", "").strip()
+    desc = request.form.get("desc", "").strip()
 
-    original_name = file.filename or "untitled.pptx"
+    original_name = Path(file.filename or "untitled.pptx").name
     ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_EXT:
         return jsonify({"error": "僅支援 .pptx / .ppt 檔案"}), 400
 
-    slide_id = f"upload-{uuid.uuid4().hex[:10]}"
-    saved_pptx_path = UPLOAD_DIR / f"{slide_id}{ext}"
-    file.save(str(saved_pptx_path))
+    slide_id = f"upload-{uuid.uuid4().hex[:12]}"
+    material_dir = UPLOAD_DIR / slide_id
+    out_folder = UPLOADED_SLIDES_DIR / slide_id
+    material_dir.mkdir(parents=True, exist_ok=True)
+    out_folder.mkdir(parents=True, exist_ok=True)
+    saved_path = material_dir / f"source{ext}"
+    file.save(str(saved_path))
 
-    out_folder = SLIDES_DIR / slide_id
     try:
-        page_count = convert_pptx_to_images(saved_pptx_path, out_folder)
-    except Exception as e:  # noqa: BLE001
+        page_count = convert_pptx_to_images(saved_path, out_folder)
+    except Exception as e:
+        shutil.rmtree(material_dir, ignore_errors=True)
         shutil.rmtree(out_folder, ignore_errors=True)
-        saved_pptx_path.unlink(missing_ok=True)
         return jsonify({"error": f"轉檔失敗：{e}"}), 500
 
     entry = {
         "id": slide_id,
         "filename": original_name,
-        "title": original_name,
-        "desc": "使用者自行上傳之補充教材",
+        "title": title or original_name,
+        "description": desc or "管理者上傳之教育訓練補充教材",
         "category": category,
         "folder": slide_id,
-        "pageCount": page_count,
-        "isBuiltin": False,
-        "dateAdded": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "page_count": page_count,
+        "date_added": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "storage_filename": saved_path.name,
+        "active": True,
     }
-    meta = load_meta()
-    meta.append(entry)
-    save_meta(meta)
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""INSERT INTO materials (id,filename,title,description,category,folder,page_count,date_added,storage_filename,active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", tuple(entry.values()))
+        else:
+            conn.execute("""INSERT INTO materials (id,filename,title,description,category,folder,page_count,date_added,storage_filename,active) VALUES (?,?,?,?,?,?,?,?,?,?)""", tuple(entry.values()))
+    except Exception:
+        shutil.rmtree(material_dir, ignore_errors=True)
+        shutil.rmtree(out_folder, ignore_errors=True)
+        raise
+    finally:
+        conn.close()
 
-    return jsonify(
-        {
-            **entry,
-            "categoryLabel": CATEGORY_LABELS.get(category, CATEGORY_LABELS[""]),
-            "imageFolder": f"slides/{slide_id}",
-            "downloadUrl": f"/download/{slide_id}",
-        }
-    )
+    return jsonify({
+        "id": slide_id, "filename": original_name, "title": entry["title"], "desc": entry["description"],
+        "category": category, "folder": slide_id, "pageCount": page_count, "isBuiltin": False,
+        "dateAdded": entry["date_added"], "active": True,
+        "categoryLabel": CATEGORY_LABELS.get(category, CATEGORY_LABELS[""]),
+        "imageFolder": f"uploaded-slides/{slide_id}", "downloadUrl": f"/download/{slide_id}"
+    })
+
+
+@app.patch("/api/slides/<slide_id>")
+def api_update_slide(slide_id):
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_material(slide_id)
+    if not entry:
+        return jsonify({"error": "找不到可編輯的上傳教材"}), 404
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title", entry["title"])).strip()[:255]
+    desc = str(data.get("desc", entry.get("desc", ""))).strip()[:1000]
+    category = str(data.get("category", entry.get("category", "")))
+    active = bool(data.get("active", entry.get("active", True)))
+    if category not in CATEGORY_LABELS:
+        category = ""
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("UPDATE materials SET title=%s, description=%s, category=%s, active=%s WHERE id=%s", (title, desc, category, active, slide_id))
+        else:
+            conn.execute("UPDATE materials SET title=?, description=?, category=?, active=? WHERE id=?", (title, desc, category, int(active), slide_id))
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.delete("/api/slides/<slide_id>")
 def api_delete_slide(slide_id):
-    meta = load_meta()
-    entry = next((m for m in meta if m["id"] == slide_id), None)
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_material(slide_id)
     if not entry:
-        return jsonify({"error": "找不到此簡報"}), 404
-    if entry.get("isBuiltin"):
-        return jsonify({"error": "內建簡報無法刪除"}), 403
-
-    shutil.rmtree(SLIDES_DIR / entry["folder"], ignore_errors=True)
-    for ext in (".pptx", ".ppt"):
-        (UPLOAD_DIR / f"{entry['id']}{ext}").unlink(missing_ok=True)
-
-    meta = [m for m in meta if m["id"] != slide_id]
-    save_meta(meta)
+        return jsonify({"error": "內建教材不能從後台刪除，或找不到此教材"}), 404
+    shutil.rmtree(UPLOAD_DIR / entry["id"], ignore_errors=True)
+    shutil.rmtree(UPLOADED_SLIDES_DIR / entry["folder"], ignore_errors=True)
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("DELETE FROM materials WHERE id=%s", (slide_id,))
+        else:
+            conn.execute("DELETE FROM materials WHERE id=?", (slide_id,))
+    finally:
+        conn.close()
     return jsonify({"ok": True})
+
+
+@app.post("/api/records")
+def api_create_record():
+    data = request.get_json(silent=True) or {}
+    required = ["id", "name", "empId", "role", "quizTitle", "score", "status"]
+    missing = [k for k in required if data.get(k) in (None, "")]
+    if missing:
+        return jsonify({"error": f"缺少欄位：{', '.join(missing)}"}), 400
+
+    try:
+        score = int(data.get("score", 0))
+        correct_count = int(data.get("correctCount", 0))
+        wrong_count = int(data.get("wrongCount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "分數或題數格式錯誤"}), 400
+    score = max(0, min(100, score))
+    record_id = str(data["id"])[:100]
+    created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    answers = data.get("answersDetail", [])
+
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""
+                INSERT INTO exam_records
+                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (id) DO NOTHING
+            """, (record_id, created_at, str(data["name"])[:100], str(data["empId"])[:100],
+                  str(data["role"])[:100], str(data.get("evaluatorName", ""))[:100],
+                  str(data.get("evaluatorTitle", ""))[:100], str(data["quizTitle"])[:255], score,
+                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False)))
+        else:
+            conn.execute("""
+                INSERT OR IGNORE INTO exam_records
+                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (record_id, created_at, str(data["name"])[:100], str(data["empId"])[:100],
+                  str(data["role"])[:100], str(data.get("evaluatorName", ""))[:100],
+                  str(data.get("evaluatorTitle", ""))[:100], str(data["quizTitle"])[:255], score,
+                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False)))
+        return jsonify({"ok": True, "id": record_id})
+    finally:
+        conn.close()
+
+
+@app.get("/api/records")
+def api_list_records():
+    denied = require_admin()
+    if denied:
+        return denied
+    conn, _ = _db_conn()
+    try:
+        rows = conn.execute("SELECT * FROM exam_records ORDER BY created_at DESC").fetchall()
+        return jsonify([_record_to_dict(r) for r in rows])
+    finally:
+        conn.close()
+
+
+@app.delete("/api/records")
+def api_clear_records():
+    denied = require_admin()
+    if denied:
+        return denied
+    conn, _ = _db_conn()
+    try:
+        conn.execute("DELETE FROM exam_records")
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
 
 
 @app.get("/health")
