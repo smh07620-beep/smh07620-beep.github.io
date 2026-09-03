@@ -37,7 +37,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 
 try:
-    import pymupdf as fitz # PyMuPDF，用於 PDF -> PNG，跨平台不需額外安裝 poppler
+    import fitz  # PyMuPDF，用於 PDF -> PNG，跨平台不需額外安裝 poppler
 except ImportError:
     fitz = None
 
