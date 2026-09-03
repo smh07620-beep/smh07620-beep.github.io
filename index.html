@@ -98,7 +98,7 @@
                     <span class="text-teal-600">📚</span> 生化組教育訓練投影片
                 </h2>
                 <p class="text-xs sm:text-sm text-slate-600">
-                    請先於下方開啟並研讀對應之教育訓練簡報，複習完成後可點擊每份簡報卡片上的「前往對應考題作答」直接跳轉至考試區進行測驗。管理者亦可於下方持續上傳新的 PPTX 簡報檔案。
+                    點擊「👁️ 直接開啟瀏覽」即可在頁面內逐頁瀏覽簡報內容，不需下載檔案；複習完成後可點擊每份簡報卡片上的「前往對應考題作答」直接跳轉至考試區進行測驗。管理者亦可於下方持續上傳新的 PPTX 簡報檔案。
                 </p>
             </section>
 
@@ -427,8 +427,8 @@
 
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                         <div class="flex items-center justify-between border-b pb-2 border-slate-200 gap-2">
-                            <span class="font-bold text-rose-800 text-xs sm:text-sm">Sebia 故障排除（COVER C1 專用）</span>
-                            <span class="text-xs font-semibold px-2 py-0.5 bg-rose-100 text-rose-800 rounded whitespace-nowrap">尚無簡報</span>
+                            <span class="font-bold text-rose-800 text-xs sm:text-sm break-all">Sebia_簡易故障排除指南.pptx</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-rose-100 text-rose-800 rounded whitespace-nowrap">2 模組</span>
                         </div>
                         <p class="text-xs text-slate-600 mt-2">
                             • Short prime 用於管路排氣/清洗。<br>
@@ -447,6 +447,38 @@
                 <button onclick="toggleSopModal(false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-5 py-2 rounded-lg text-xs transition-colors">
                     關閉手冊 (返回測驗)
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide Viewer Modal: 直接在頁面內瀏覽簡報頁面，不需下載檔案 -->
+    <div id="slide-viewer-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-2 sm:p-6">
+        <div class="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[95vh] flex flex-col shadow-2xl overflow-hidden border border-slate-700">
+            <!-- Modal Header -->
+            <div class="bg-slate-950 text-white px-4 sm:px-6 py-3 flex justify-between items-center border-b border-slate-800 gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-teal-400 text-lg shrink-0">📊</span>
+                    <h3 id="slide-viewer-title" class="text-sm sm:text-base font-bold truncate">簡報標題</h3>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <a id="slide-viewer-download" href="#" class="text-xs font-semibold text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 px-2.5 py-1.5 rounded-lg transition-colors hidden">
+                        ⬇️ 下載原始檔
+                    </a>
+                    <button onclick="closeSlideViewer()" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+            </div>
+
+            <!-- Slide Image Display -->
+            <div class="flex-grow overflow-auto bg-slate-800 flex items-center justify-center p-2 sm:p-4 relative">
+                <button onclick="slideViewerPrev()" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 bg-slate-900/70 hover:bg-slate-900 text-white w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-lg shadow-lg z-10">‹</button>
+                <img id="slide-viewer-image" src="" alt="簡報頁面" class="max-w-full max-h-[70vh] rounded-lg shadow-2xl border border-slate-700 select-none">
+                <button onclick="slideViewerNext()" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 bg-slate-900/70 hover:bg-slate-900 text-white w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-lg shadow-lg z-10">›</button>
+            </div>
+
+            <!-- Modal Footer: 頁碼與快速跳頁 -->
+            <div class="bg-slate-950 px-4 sm:px-6 py-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span id="slide-viewer-page-info" class="text-xs sm:text-sm text-slate-300 font-mono">第 1 / 1 頁</span>
+                <div id="slide-viewer-thumbs" class="flex gap-1.5 overflow-x-auto max-w-full py-1"></div>
             </div>
         </div>
     </div>
@@ -476,21 +508,36 @@
                 filename: '2026_生化教育訓練.pptx',
                 title: '2026_生化教育訓練.pptx',
                 desc: '涵蓋一致性作業、異常檢體處理與法定傳染病通報流程之總論教材。',
-                category: 'subA1'
+                category: 'subA1',
+                imageFolder: 'slides/subA1',
+                pageCount: 16
             },
             {
                 id: 'builtin-subA2',
                 filename: '2026生化組教育訓練_c503_操作與維護.pptx',
                 title: '2026生化組教育訓練_c503_操作與維護.pptx',
                 desc: 'Cobas pro c503 一般作業流程、日常保養與異常訊號故障排除教材。',
-                category: 'subA2'
+                category: 'subA2',
+                imageFolder: 'slides/subA2',
+                pageCount: 13
             },
             {
                 id: 'builtin-subA3',
                 filename: 'Cobas_b_211_儀器教育訓練.pptx',
                 title: 'Cobas_b_211_儀器教育訓練.pptx',
                 desc: 'Cobas b 211 異常訊號故障排除、管路潤濕與 QC 批號設定教材。',
-                category: 'subA3'
+                category: 'subA3',
+                imageFolder: 'slides/subA3',
+                pageCount: 10
+            },
+            {
+                id: 'builtin-zoneB',
+                filename: 'Sebia_簡易故障排除指南.pptx',
+                title: 'Sebia_簡易故障排除指南.pptx',
+                desc: 'Sebia 儀器 Cup/Rack 卡住、管路異常與各類警報之簡易故障排除教材。',
+                category: 'zoneB',
+                imageFolder: 'slides/zoneB',
+                pageCount: 7
             }
         ];
 
@@ -587,7 +634,9 @@
             const jumpBtn = category
                 ? `<button onclick="goToExamModule('${category}')" class="flex-1 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">📝 前往對應考題作答</button>`
                 : `<span class="flex-1 text-xs text-slate-400 flex items-center justify-center">未連結考題模組</span>`;
-            const openBtn = `<button onclick="openSlide('${id}')" class="flex-1 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">📂 開啟／下載簡報</button>`;
+            const openBtn = isBuiltin
+                ? `<button onclick="openSlide('${id}')" class="flex-1 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">👁️ 直接開啟瀏覽</button>`
+                : `<button onclick="openSlide('${id}')" class="flex-1 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">📂 開啟原始檔</button>`;
             const deleteBtn = isBuiltin
                 ? ''
                 : `<button onclick="deleteUploadedSlide('${id}')" class="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-1 rounded-lg transition-colors">🗑️ 刪除</button>`;
@@ -637,7 +686,7 @@
                 .map(s => buildSlideCardHTML({
                     id: s.id,
                     title: s.title,
-                    desc: '使用者自行上傳之補充教材',
+                    desc: '使用者自行上傳之補充教材（將於新分頁開啟原始檔，暫不支援逐頁預覽）',
                     category: s.category,
                     sizeLabel: formatFileSize(s.size),
                     isBuiltin: false,
@@ -647,29 +696,113 @@
             grid.innerHTML = builtinHTML + uploadedHTML;
         }
 
-        async function openSlide(id) {
+        // --- 簡報檢視器 (Slide Viewer)：內建簡報已預先轉為每頁圖片，直接在頁面內瀏覽，不需下載 ---
+        let slideViewerState = {
+            images: [],       // 目前開啟的簡報，每頁圖片路徑或 blob URL 陣列
+            index: 0,         // 目前頁碼 (0-based)
+            title: '',
+            downloadUrl: '',  // 原始檔下載連結（找不到逐頁圖片時的備用方案）
+            downloadName: ''
+        };
+
+        function openSlide(id) {
             const builtin = builtinSlides.find(s => s.id === id);
             if (builtin) {
-                // 內建簡報：假設與 index.html 部署於同一資料夾，直接以相對路徑開啟／下載
-                window.open(encodeURIComponent(builtin.filename), '_blank');
+                const images = [];
+                for (let i = 1; i <= builtin.pageCount; i++) {
+                    const num = String(i).padStart(2, '0');
+                    images.push(`${builtin.imageFolder}/slide-${num}.png`);
+                }
+                openSlideViewer({
+                    images,
+                    title: builtin.title,
+                    downloadUrl: encodeURIComponent(builtin.filename),
+                    downloadName: builtin.filename
+                });
                 return;
             }
+            openUploadedSlideViewer(id);
+        }
+
+        async function openUploadedSlideViewer(id) {
             const uploaded = await getUploadedSlides();
             const rec = uploaded.find(s => s.id === id);
             if (!rec) {
                 alert('找不到該份簡報，可能已被刪除。');
                 return;
             }
+            // 自行上傳的 PPTX 因未經伺服器轉檔，暫無法逐頁預覽，直接於分頁中開啟原始檔。
             const url = URL.createObjectURL(rec.blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = rec.filename;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 30000);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
         }
+
+        function openSlideViewer({ images, title, downloadUrl, downloadName }) {
+            slideViewerState = { images, index: 0, title, downloadUrl, downloadName };
+            document.getElementById('slide-viewer-title').textContent = title;
+
+            const downloadBtn = document.getElementById('slide-viewer-download');
+            if (downloadUrl) {
+                downloadBtn.href = downloadUrl;
+                downloadBtn.setAttribute('download', downloadName || '');
+                downloadBtn.classList.remove('hidden');
+            } else {
+                downloadBtn.classList.add('hidden');
+            }
+
+            renderSlideThumbs();
+            updateSlideViewerImage();
+            document.getElementById('slide-viewer-modal').classList.remove('hidden');
+        }
+
+        function updateSlideViewerImage() {
+            const { images, index, title } = slideViewerState;
+            if (!images.length) return;
+            document.getElementById('slide-viewer-image').src = images[index];
+            document.getElementById('slide-viewer-page-info').textContent = `第 ${index + 1} / ${images.length} 頁`;
+
+            document.querySelectorAll('.slide-thumb-btn').forEach((btn, i) => {
+                btn.className = i === index
+                    ? 'slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border-2 border-teal-400 shrink-0 overflow-hidden opacity-100'
+                    : 'slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border border-slate-600 shrink-0 overflow-hidden opacity-50 hover:opacity-90 transition-opacity';
+            });
+        }
+
+        function renderSlideThumbs() {
+            const container = document.getElementById('slide-viewer-thumbs');
+            container.innerHTML = slideViewerState.images.map((src, i) => `
+                <button class="slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border border-slate-600 shrink-0 overflow-hidden opacity-50 hover:opacity-90 transition-opacity" onclick="goToSlidePage(${i})">
+                    <img src="${src}" class="w-full h-full object-cover" alt="第 ${i + 1} 頁縮圖">
+                </button>
+            `).join('');
+        }
+
+        function goToSlidePage(i) {
+            if (i < 0 || i >= slideViewerState.images.length) return;
+            slideViewerState.index = i;
+            updateSlideViewerImage();
+        }
+
+        function slideViewerPrev() {
+            goToSlidePage(slideViewerState.index - 1);
+        }
+
+        function slideViewerNext() {
+            goToSlidePage(slideViewerState.index + 1);
+        }
+
+        function closeSlideViewer() {
+            document.getElementById('slide-viewer-modal').classList.add('hidden');
+        }
+
+        // 鍵盤左右鍵切換頁面、ESC 關閉
+        document.addEventListener('keydown', (e) => {
+            const modal = document.getElementById('slide-viewer-modal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (e.key === 'ArrowLeft') slideViewerPrev();
+            else if (e.key === 'ArrowRight') slideViewerNext();
+            else if (e.key === 'Escape') closeSlideViewer();
+        });
 
         // --- 上傳新簡報 ---
         document.addEventListener('DOMContentLoaded', () => {
