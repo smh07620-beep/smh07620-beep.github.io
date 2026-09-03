@@ -1,0 +1,46 @@
+[
+  {
+    "id": "builtin-subA1",
+    "filename": "2026_生化教育訓練.pptx",
+    "title": "2026_生化教育訓練.pptx",
+    "desc": "涵蓋一致性作業、異常檢體處理與法定傳染病通報流程之總論教材。",
+    "category": "subA1",
+    "folder": "subA1",
+    "pageCount": 16,
+    "isBuiltin": true,
+    "dateAdded": ""
+  },
+  {
+    "id": "builtin-subA2",
+    "filename": "2026生化組教育訓練_c503_操作與維護.pptx",
+    "title": "2026生化組教育訓練_c503_操作與維護.pptx",
+    "desc": "Cobas pro c503 一般作業流程、日常保養與異常訊號故障排除教材。",
+    "category": "subA2",
+    "folder": "subA2",
+    "pageCount": 13,
+    "isBuiltin": true,
+    "dateAdded": ""
+  },
+  {
+    "id": "builtin-subA3",
+    "filename": "Cobas_b_211_儀器教育訓練.pptx",
+    "title": "Cobas_b_211_儀器教育訓練.pptx",
+    "desc": "Cobas b 211 異常訊號故障排除、管路潤濕與 QC 批號設定教材。",
+    "category": "subA3",
+    "folder": "subA3",
+    "pageCount": 10,
+    "isBuiltin": true,
+    "dateAdded": ""
+  },
+  {
+    "id": "builtin-zoneB",
+    "filename": "Sebia_簡易故障排除指南.pptx",
+    "title": "Sebia_簡易故障排除指南.pptx",
+    "desc": "Sebia 儀器 Cup/Rack 卡住、管路異常與各類警報之簡易故障排除教材。",
+    "category": "zoneB",
+    "folder": "zoneB",
+    "pageCount": 7,
+    "isBuiltin": true,
+    "dateAdded": ""
+  }
+]
