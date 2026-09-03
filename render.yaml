@@ -2,12 +2,15 @@ services:
   - type: web
     name: biochemical-training-exam
     runtime: docker
-    plan: starter
+    plan: 0.5c-512mb
+    region: singapore
+    numInstances: 1
     disk:
       name: materials-data
       mountPath: /var/data
       sizeGB: 10
     healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -21,9 +24,5 @@ services:
 databases:
   - name: biochemical-training-db
     databaseName: biochemical_training
-    plan: starter
-    disk:
-      name: materials-data
-      mountPath: /var/data
-      sizeGB: 10
+    plan: 0.1c-256mb
     region: singapore

@@ -93,16 +93,17 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 # 考核成績資料庫
 # ---------------------------------------------------------------------------
 def _db_conn():
-    """優先使用 Render/PostgreSQL；沒有 DATABASE_URL 時退回 SQLite。"""
+    """有 DATABASE_URL 時強制使用 PostgreSQL；本機未設定時才使用 SQLite。
+
+    這樣 Render 若 PostgreSQL 暫時連線失敗，會直接顯示錯誤，避免悄悄寫進
+    Render 的暫存 SQLite，造成「看起來有存檔、實際成績沒有進中央資料庫」的問題。
+    """
     if DATABASE_URL:
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
-            conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
-            conn.autocommit = True
-            return conn, "postgres"
-        except Exception as exc:
-            app.logger.warning("PostgreSQL 連線失敗，改用 SQLite：%s", exc)
+        import psycopg
+        from psycopg.rows import dict_row
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10)
+        conn.autocommit = True
+        return conn, "postgres"
     conn = sqlite3.connect(str(SQLITE_DB), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn, "sqlite"
