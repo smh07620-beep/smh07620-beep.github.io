@@ -7,10 +7,13 @@ services:
     numInstances: 1
     healthCheckPath: /health
     autoDeployTrigger: commit
+
     envVars:
       - key: DATABASE_URL
-        sync: false  postgresql://postgres:[YOUR-PASSWORD]@db.wypchiroyugelxxlbmto.supabase.co:5432/postgres
+        sync: false
+
       - key: ADMIN_KEY
         sync: false
+
       - key: MATERIAL_STORAGE
         value: /var/data/materials
