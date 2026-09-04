@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>羅東聖母醫院生化組 - 2026生化教育訓練考核系統</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Docxtemplater, PizZip & FileSaver for Word Exporting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pizzip/3.1.4/pizzip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docxtemplater/3.37.11/docxtemplater.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 260px;
+            max-height: 300px;
+        }
+        .mode-btn {
+            background-color: #fff;
+            color: #475569;
+            border-color: #e2e8f0;
+        }
+        .mode-btn:hover {
+            background-color: #f1f5f9;
+        }
+        .mode-btn.active {
+            background-color: #0d9488;
+            color: #fff;
+            border-color: #0f766e;
+            box-shadow: 0 2px 6px rgba(15, 118, 110, 0.25);
+        }
+        .slide-card {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans leading-relaxed min-h-screen flex flex-col">
+
+    <!-- Hidden file input used to let the admin pick 附件1.docx manually -->
+    <input type="file" id="docx-template-input" accept=".docx" style="display:none">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3.5 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div class="flex items-center gap-3">
+                <span class="bg-teal-600 text-white font-bold rounded-lg px-2.5 py-1 text-xs sm:text-sm shadow-sm tracking-wide">
+                    2026 教育訓練考核
+                </span>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-slate-100">羅東聖母醫院 檢驗科生化組</h1>
+                    <p class="text-xs text-slate-400">生化組四大模組線上測驗與 SOP 評估系統</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button onclick="toggleAdminModal(true)" class="bg-indigo-700 hover:bg-indigo-600 text-white text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span>📊</span> 後台成績管理
+                </button>
+                <button onclick="toggleSopModal(true)" class="bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-500/30 text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span>📖</span> 投影片 × 考題對照手冊
+                </button>
+                <button onclick="resetCurrentQuiz()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm">
+                    🔄 重測當前考卷
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- ============================================================ -->
+        <!-- 六大組別選單 (Top-level Group Selector)                       -->
+        <!-- ============================================================ -->
+        <section class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="flex items-center gap-1.5 mb-2 px-1">
+                <span class="text-teal-600 text-sm">🧪</span>
+                <span class="text-xs font-bold text-slate-500">請先選擇組別</span>
+            </div>
+            <div id="group-tabs" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <!-- Dynamically filled by renderGroupTabs() -->
+            </div>
+        </section>
+
+        <!-- Top-level Mode Selector: 教育訓練投影片區 vs 考試區 -->
+        <section class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-2">
+            <button onclick="switchMainPanel('slides')" id="mode-btn-slides" class="mode-btn flex-1 py-3.5 px-4 rounded-xl text-sm sm:text-base font-bold transition-all flex items-center justify-center gap-2 border">
+                <span>📚</span> 教育訓練投影片區
+            </button>
+            <button onclick="switchMainPanel('exam')" id="mode-btn-exam" class="mode-btn flex-1 py-3.5 px-4 rounded-xl text-sm sm:text-base font-bold transition-all flex items-center justify-center gap-2 border">
+                <span>📝</span> 考試區（線上測驗）
+            </button>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- 教育訓練投影片區 (Training Slides Zone)                        -->
+        <!-- ============================================================ -->
+        <section id="panel-slides" class="space-y-6">
+
+            <section class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <h2 id="slides-panel-heading" class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    📚 1 生化組教育訓練投影片
+                </h2>
+                <p class="text-xs sm:text-sm text-slate-600">
+                    點擊「👁️ 直接開啟瀏覽」即可在頁面內逐頁瀏覽簡報內容，不需下載檔案；複習完成後可點擊每份簡報卡片上的「前往對應考題作答」直接跳轉至考試區進行測驗。管理者亦可於下方持續上傳新的 PPTX 簡報檔案。
+                </p>
+            </section>
+
+            <section id="slides-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Dynamically filled: 內建 3 份簡報 + 使用者自行上傳之簡報 -->
+            </section>
+
+            <!-- 教材新增改由管理後台執行，避免一般考生誤上傳或刪除教材 -->
+            <section class="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">🔒 教材管理</h3>
+                        <p class="text-xs text-slate-500 mt-1">新增、修改、啟用/停用與刪除教材請由管理者後台操作；新增後所有同事重新整理即可看到。</p>
+                    </div>
+                    <button onclick="toggleAdminModal(true)" class="bg-indigo-700 hover:bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm">⚙️ 開啟管理後台</button>
+                </div>
+            </section>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- 考試區 (Exam Zone)                                            -->
+        <!-- ============================================================ -->
+        <section id="panel-exam" class="space-y-6 hidden">
+
+        <!-- User Info Input Section -->
+        <section class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <div class="flex items-center gap-2 border-b border-slate-100 pb-2">
+                <span class="text-teal-600 font-bold">👤</span>
+                <h3 class="text-base font-bold text-slate-800">考核者基本資料（請務必填寫）</h3>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="examinee-name" class="block text-xs font-semibold text-slate-600 mb-1">考核者姓名 <span class="text-red-500">*</span></label>
+                    <input type="text" id="examinee-name" placeholder="請輸入姓名 (例：王小明)" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label for="examinee-id" class="block text-xs font-semibold text-slate-600 mb-1">員工工號 / 識別碼 <span class="text-red-500">*</span></label>
+                    <input type="text" id="examinee-id" placeholder="請輸入工號 (例：12345)" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label for="examinee-role" class="block text-xs font-semibold text-slate-600 mb-1">受測者身份 <span class="text-red-500">*</span></label>
+                    <select id="examinee-role" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <option value="">請選擇身份</option>
+                        <option value="值班醫檢師">值班醫檢師</option>
+                        <option value="生化組組員">生化組組員</option>
+                    </select>
+                </div>
+            </div>
+            <p class="text-xs text-slate-500">評核者：許晉誠　職稱：組長（系統固定值）</p>
+        </section>
+
+        <!-- Quiz Exam Zone Selector Tabs：生化組專用（沿用原本固定頁籤與題庫，不受其他組別影響） -->
+        <div id="bio-exam-tabs" class="space-y-2">
+            <section class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-2">
+                <button onclick="switchCategory('zoneA')" id="tab-zoneA" class="tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent">
+                    <span>🩺</span> 1. 值班人員考區
+                </button>
+                <button onclick="switchCategory('zoneB')" id="tab-zoneB" class="tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent">
+                    <span>⚡</span> 2. COVER C1人員考區
+                </button>
+            </section>
+
+            <!-- Sub-tabs for Zone A (值班人員考區三大模組頁籤) -->
+            <section id="zoneA-subtabs" class="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-2 hidden">
+                <button onclick="switchSubCategory('subA1')" id="tab-subA1" class="sub-tab-btn flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-sm flex items-center justify-center gap-1.5">
+                    <span>📋</span> 一致性與法定傳染病通報
+                </button>
+                <button onclick="switchSubCategory('subA2')" id="tab-subA2" class="sub-tab-btn flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-white flex items-center justify-center gap-1.5">
+                    <span>⚙️</span> c503一般作業流程與異常訊號故障排除
+                </button>
+                <button onclick="switchSubCategory('subA3')" id="tab-subA3" class="sub-tab-btn flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-white flex items-center justify-center gap-1.5">
+                    <span>⚡</span> Cobas b 211異常訊號故障排除與QC設定
+                </button>
+            </section>
+        </div>
+
+        <!-- Quiz Exam Zone Selector Tabs：其餘組別專用（考題頁籤由後台管理者建立） -->
+        <section id="dynamic-exam-tabs" class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm hidden">
+            <div id="dynamic-exam-tabs-list" class="flex flex-col sm:flex-row flex-wrap gap-2">
+                <!-- Dynamically filled by renderDynamicExamTabs() -->
+            </div>
+            <p id="dynamic-exam-tabs-empty" class="text-xs text-slate-400 text-center py-3 hidden">
+                本組別尚未建立任何考題頁籤，請由管理者後台「🗂 考題頁籤與題庫管理」新增。
+            </p>
+        </section>
+
+        <!-- Introductory Description & Status Dashboard -->
+        <section class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div class="border-b border-slate-100 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                    <h2 id="current-quiz-title" class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                        <span class="text-teal-600">📝</span> 載入中...
+                    </h2>
+                    <p id="current-quiz-desc" class="text-xs sm:text-sm text-slate-600 mt-1">
+                        載入中，請稍候…答題完成後請點擊「提交試卷結算成績」。
+                    </p>
+                </div>
+                <!-- 附件1 單頁籤獨立 Word 匯出按鈕 -->
+                <button id="export-single-word-btn" onclick="exportCurrentTabToWord()" class="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span>📄</span> 匯出目前頁籤 Word (附件1)
+                </button>
+            </div>
+
+            <!-- Quiz Status Metrics & Jump Bar -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                <div class="md:col-span-4 grid grid-cols-2 gap-3 text-center">
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span class="text-xs text-slate-500 block">答題進度</span>
+                        <span id="stat-progress" class="text-lg font-bold text-teal-700">0 / 10</span>
+                    </div>
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span class="text-xs text-slate-500 block">標記不確定</span>
+                        <span id="stat-flagged" class="text-lg font-bold text-amber-600">0 題</span>
+                    </div>
+                </div>
+
+                <!-- Quick Navigation Jump Grid -->
+                <div class="md:col-span-8 space-y-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+                        <span>題目快速定位 (點擊跳轉)：</span>
+                        <div class="flex gap-3 text-xs">
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block"></span>未答</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block"></span>已答</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>標記</span>
+                        </div>
+                    </div>
+                    <div id="quick-jump-grid" class="flex flex-wrap gap-2">
+                        <!-- Dynamically filled buttons -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quiz Questions Area -->
+        <section id="quiz-questions-list" class="space-y-6">
+            <!-- Questions rendered via JavaScript -->
+        </section>
+
+        <!-- Bottom Action Bar -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-md flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-4 z-40">
+            <div class="text-xs sm:text-sm text-slate-600">
+                <span id="bottom-status-text">請完成所有題目後點擊「提交試卷結算成績」。</span>
+            </div>
+            <button id="submit-btn" onclick="submitQuiz()" class="w-full sm:w-auto bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition-all text-base flex items-center justify-center gap-2">
+                <span>📋</span> 提交試卷結算成績
+            </button>
+        </div>
+
+        <!-- Result & Diagnostic Section (Hidden until submitted) -->
+        <section id="result-dashboard" class="hidden bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xl space-y-8">
+            <div class="text-center space-y-3 pb-6 border-b border-slate-200">
+                <span id="result-badge" class="inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-green-100 text-green-800">
+                    考核結果：合格 (PASS)
+                </span>
+                <h2 class="text-3xl font-extrabold text-slate-900">測驗成績結算報告</h2>
+                <p id="result-user-info" class="text-sm font-semibold text-slate-700">考核者：-- (工號：--)</p>
+                <div class="flex justify-center items-baseline gap-2">
+                    <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold">您的得分：</span>
+                    <span id="final-score-text" class="text-5xl font-black text-teal-600 font-mono">0</span>
+                    <span class="text-slate-400 font-bold">/ 100 分</span>
+                </div>
+                <p id="result-summary-comment" class="text-sm text-slate-600 max-w-xl mx-auto">
+                    --
+                </p>
+            </div>
+
+            <!-- Score Diagnostic Chart & Metrics Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-3">
+                    <h3 class="text-base font-bold text-slate-800 text-center">📊 答題分項成績診斷</h3>
+                    <div class="chart-container">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="text-base font-bold text-slate-800">📋 考核結果統計細項</h3>
+                    <div class="grid grid-cols-3 gap-3 text-center text-sm">
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <span class="text-xs text-slate-500 block">答對題數</span>
+                            <span id="res-correct-count" class="text-xl font-bold text-green-600">0 題</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <span class="text-xs text-slate-500 block">答錯題數</span>
+                            <span id="res-wrong-count" class="text-xl font-bold text-red-600">0 題</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <span class="text-xs text-slate-500 block">及格門檻</span>
+                            <span class="text-xl font-bold text-teal-700">80 分</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="scrollToReview()" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow">
+                            🔍 逐題檢視解析
+                        </button>
+                        <button onclick="toggleAdminModal(true)" class="flex-1 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow">
+                            📊 前往成績後台
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        </section>
+        <!-- /#panel-exam -->
+
+    </main>
+
+    <!-- Admin Backend Modal -->
+    <div id="admin-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-5xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+            <!-- Modal Header -->
+            <div class="bg-indigo-900 text-white px-6 py-4 flex justify-between items-center border-b border-indigo-800">
+                <div class="flex items-center gap-2">
+                    <span class="text-indigo-300 text-lg">📊</span>
+                    <h3 class="text-lg font-bold">2026 生化教育訓練 - 考核成績管理後台</h3>
+                </div>
+                <button onclick="toggleAdminModal(false)" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto space-y-5">
+                <section class="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-3">
+                    <div>
+                        <h4 class="font-bold text-teal-900">📚 新增教育訓練教材</h4>
+                        <p class="text-xs text-teal-700 mt-1">上傳 PPT / PPTX 後，伺服器會自動轉成逐頁圖片。教材會保存於 Render Persistent Disk，不會因一般重新部署而消失。</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">選擇教材檔案</label>
+                            <input type="file" id="admin-pptx-upload-input" accept=".pptx,.ppt" multiple class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">教材名稱（留白則使用檔名）</label>
+                            <input id="admin-material-title" type="text" maxlength="255" placeholder="例如：2027 C503 操作與維護" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">所屬組別</label>
+                            <select id="admin-material-group" onchange="onAdminMaterialGroupChange()" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+                                <!-- Dynamically filled by populateAdminGroupSelects() -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">對應考題頁籤</label>
+                            <select id="admin-material-category" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+                                <!-- Dynamically filled by refreshAdminMaterialCategoryOptions() -->
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">教材說明</label>
+                            <textarea id="admin-material-desc" rows="2" maxlength="1000" placeholder="簡短說明這份教材的內容" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"></textarea>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                        <button onclick="adminUploadMaterials()" id="admin-upload-btn" class="bg-teal-700 hover:bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg text-sm">⬆️ 上傳並轉檔</button>
+                        <span id="admin-upload-status" class="text-xs text-teal-800 min-h-5"></span>
+                    </div>
+                </section>
+
+                <section class="bg-white border border-slate-200 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">📦 教材清單</h4>
+                            <p class="text-xs text-slate-500">可修改名稱、組別、分類、說明，也可以停用或刪除自行上傳教材。</p>
+                        </div>
+                        <button onclick="renderAdminMaterials()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg">🔄 重新整理</button>
+                    </div>
+                    <div id="admin-materials-list" class="space-y-2"></div>
+                </section>
+
+                <section class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                    <div>
+                        <h4 class="font-bold text-indigo-900">🗂 考題頁籤與題庫管理</h4>
+                        <p class="text-xs text-indigo-700 mt-1">生化組沿用原有固定頁籤與題庫（此處不可編輯）；其餘組別的考題頁籤與題目請在這裡新增、編輯、刪除。</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                        <div class="flex-1 w-full">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">選擇組別</label>
+                            <select id="admin-quiz-group" onchange="onAdminQuizGroupChange()" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white">
+                                <!-- Dynamically filled by populateAdminGroupSelects() -->
+                            </select>
+                        </div>
+                        <div class="flex-1 w-full">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">新增考題頁籤</label>
+                            <div class="flex gap-2">
+                                <input id="admin-new-category-title" type="text" maxlength="255" placeholder="頁籤名稱，例如：血液抹片鏡檢" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white">
+                                <button onclick="adminCreateQuizCategory()" class="bg-indigo-700 hover:bg-indigo-600 text-white text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">➕ 新增</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="admin-quiz-categories-list" class="space-y-3"></div>
+                </section>
+
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-sm">歷次考核成績紀錄列表</h4>
+                        <p class="text-xs text-slate-500">紀錄集中儲存於伺服器資料庫，供科內管理者跨電腦查看與匯出備份。</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex items-center gap-1 shadow-sm">
+                            <span>📥</span> 匯出 CSV 報表
+                        </button>
+                        <button onclick="clearAllRecords()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-sm">
+                            🗑️ 清空所有紀錄
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table class="w-full text-left text-xs sm:text-sm text-slate-600">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">考核時間</th>
+                                <th class="p-3">組別</th>
+                                <th class="p-3">姓名</th>
+                                <th class="p-3">工號</th>
+                                <th class="p-3">考卷主題</th>
+                                <th class="p-3 text-center">得分</th>
+                                <th class="p-3 text-center">結果</th>
+                                <th class="p-3 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-table-body" class="divide-y divide-slate-200">
+                            <!-- Dynamically loaded rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-end">
+                <button onclick="toggleAdminModal(false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-5 py-2 rounded-lg text-xs transition-colors">
+                    關閉後台
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SOP Quick Reference Modal -->
+    <div id="sop-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+            <!-- Modal Header -->
+            <div class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center border-b border-slate-800">
+                <div class="flex items-center gap-2">
+                    <span class="text-teal-400 text-lg">📖</span>
+                    <h3 class="text-lg font-bold">2026 生化組教育訓練投影片 × 考題對照手冊</h3>
+                </div>
+                <button onclick="toggleSopModal(false)" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto space-y-4 text-sm leading-relaxed">
+                <p class="text-xs text-slate-500">下列每一份簡報標題即為「教育訓練投影片區」中對應之 PPTX 檔名，重點摘要供隨堂對照；點擊「前往對應考題作答」可直接跳轉至考試區進行該模組測驗。</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <div class="flex items-center justify-between border-b pb-2 border-slate-200 gap-2">
+                            <span class="font-bold text-teal-800 text-xs sm:text-sm break-all">2026_生化教育訓練.pptx</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-teal-100 text-teal-800 rounded whitespace-nowrap">1-1 模組</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2">
+                            • Comment 3 記載退件原因，留條碼號班次交接。<br>
+                            • 退伍軍人菌/登革熱陽性須口頭通報感控並登記於委外感控通知單。
+                        </p>
+                        <button onclick="goToExamModule('subA1')" class="mt-2 w-full text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                            📝 前往對應考題作答
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <div class="flex items-center justify-between border-b pb-2 border-slate-200 gap-2">
+                            <span class="font-bold text-amber-800 text-xs sm:text-sm break-all">2026生化組教育訓練_c503_操作與維護.pptx</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded whitespace-nowrap">1-2 模組</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2">
+                            • 校正液置於黑色架，品管液置於白色架。<br>
+                            • 每日做 Wash Rack（Slot 2: SysClean, Slot 3: Activator），二者嚴禁混淆。
+                        </p>
+                        <button onclick="goToExamModule('subA2')" class="mt-2 w-full text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                            📝 前往對應考題作答
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <div class="flex items-center justify-between border-b pb-2 border-slate-200 gap-2">
+                            <span class="font-bold text-purple-800 text-xs sm:text-sm break-all">Cobas_b_211_儀器教育訓練.pptx</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-purple-100 text-purple-800 rounded whitespace-nowrap">1-3 模組</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2">
+                            • SD Wash error/FMS error 處理：Utilities -> Fluid actions -> Wetting routines。<br>
+                            • Wet sample path 抽拉空氣2-3次，無效則「輕打水」，隨後執行 Wash -> Cali。
+                        </p>
+                        <button onclick="goToExamModule('subA3')" class="mt-2 w-full text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                            📝 前往對應考題作答
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <div class="flex items-center justify-between border-b pb-2 border-slate-200 gap-2">
+                            <span class="font-bold text-rose-800 text-xs sm:text-sm break-all">Sebia_簡易故障排除指南.pptx</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-rose-100 text-rose-800 rounded whitespace-nowrap">2 模組</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2">
+                            • Short prime 用於管路排氣/清洗。<br>
+                            • Cup 卡住滑軌需下壓，Rack/Cup 卡住機台應關機手動取出。<br>
+                            • Vacuum error 需換真空管或壓力板，Over flow 需清洗及換 Sensor。
+                        </p>
+                        <button onclick="goToExamModule('zoneB')" class="mt-2 w-full text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">
+                            📝 前往對應考題作答
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-end">
+                <button onclick="toggleSopModal(false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-5 py-2 rounded-lg text-xs transition-colors">
+                    關閉手冊 (返回測驗)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide Viewer Modal: 直接在頁面內瀏覽簡報頁面，不需下載檔案 -->
+    <div id="slide-viewer-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-2 sm:p-6">
+        <div class="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[95vh] flex flex-col shadow-2xl overflow-hidden border border-slate-700">
+            <!-- Modal Header -->
+            <div class="bg-slate-950 text-white px-4 sm:px-6 py-3 flex justify-between items-center border-b border-slate-800 gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-teal-400 text-lg shrink-0">📊</span>
+                    <h3 id="slide-viewer-title" class="text-sm sm:text-base font-bold truncate">簡報標題</h3>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <a id="slide-viewer-download" href="#" class="text-xs font-semibold text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 px-2.5 py-1.5 rounded-lg transition-colors hidden">
+                        ⬇️ 下載原始檔
+                    </a>
+                    <button onclick="closeSlideViewer()" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+            </div>
+
+            <!-- Slide Image Display -->
+            <div class="flex-grow overflow-auto bg-slate-800 flex items-center justify-center p-2 sm:p-4 relative">
+                <button onclick="slideViewerPrev()" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 bg-slate-900/70 hover:bg-slate-900 text-white w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-lg shadow-lg z-10">‹</button>
+                <img id="slide-viewer-image" src="" alt="簡報頁面" class="max-w-full max-h-[70vh] rounded-lg shadow-2xl border border-slate-700 select-none">
+                <button onclick="slideViewerNext()" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 bg-slate-900/70 hover:bg-slate-900 text-white w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-lg shadow-lg z-10">›</button>
+            </div>
+
+            <!-- Modal Footer: 頁碼與快速跳頁 -->
+            <div class="bg-slate-950 px-4 sm:px-6 py-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span id="slide-viewer-page-info" class="text-xs sm:text-sm text-slate-300 font-mono">第 1 / 1 頁</span>
+                <div id="slide-viewer-thumbs" class="flex gap-1.5 overflow-x-auto max-w-full py-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center space-y-1.5">
+            <p>羅東聖母醫院 檢驗科生化組 © 2026 檢驗流程一致性標準教學與考核系統</p>
+            <p class="text-slate-500">版權所有 · 本系統專為科內同仁教育訓練、內部品管與邏輯考核設計</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic Engine -->
+    <script>
+        const FIXED_EVALUATOR_NAME = '許晉誠';
+        const FIXED_EVALUATOR_TITLE = '組長';
+
+        // ==================================================================
+        // 六大組別 (Top-level Groups)
+        // ==================================================================
+        const GROUPS = {
+            grpBio: { label: '1 生化組', icon: '🧫' },
+            grpMicro: { label: '2 鏡檢組', icon: '🔬' },
+            grpSero: { label: '3 血清組', icon: '🧪' },
+            grpBB: { label: '4 血庫組', icon: '🩸' },
+            grpBact: { label: '5 細菌組', icon: '🦠' },
+            grpHema: { label: '6 血液組', icon: '🧬' }
+        };
+        let currentGroupKey = 'grpBio';
+
+        function renderGroupTabs() {
+            const box = document.getElementById('group-tabs');
+            if (!box) return;
+            box.innerHTML = Object.entries(GROUPS).map(([key, g]) => {
+                const active = key === currentGroupKey;
+                const cls = active
+                    ? 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-md flex items-center justify-center gap-1.5 border border-teal-700'
+                    : 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent';
+                return `<button onclick="switchGroup('${key}')" id="group-tab-${key}" class="${cls}"><span>${g.icon}</span> ${g.label}</button>`;
+            }).join('');
+        }
+
+        // 切換組別：同時刷新目前所在的投影片區 / 考試區內容
+        function switchGroup(groupKey) {
+            if (!GROUPS[groupKey]) groupKey = 'grpBio';
+            currentGroupKey = groupKey;
+            renderGroupTabs();
+
+            const bioExamTabs = document.getElementById('bio-exam-tabs');
+            const dynamicExamTabs = document.getElementById('dynamic-exam-tabs');
+            const slidesHeading = document.getElementById('slides-panel-heading');
+            if (slidesHeading) slidesHeading.textContent = `📚 ${GROUPS[groupKey].label}教育訓練投影片`;
+
+            if (groupKey === 'grpBio') {
+                bioExamTabs.classList.remove('hidden');
+                dynamicExamTabs.classList.add('hidden');
+                currentCatKey = 'subA1';
+                switchCategory('zoneA');
+            } else {
+                bioExamTabs.classList.add('hidden');
+                dynamicExamTabs.classList.remove('hidden');
+                renderDynamicExamTabs();
+            }
+
+            if (!document.getElementById('panel-slides').classList.contains('hidden')) {
+                renderSlidesGrid();
+            }
+        }
+
+        // ==================================================================
+        // 教育訓練投影片區 (Training Slides Zone) — 由後端 Flask API 提供
+        // ==================================================================
+        // 簡報清單、上傳、自動轉檔全部交給後端 /api/slides 系列端點處理，
+        // 前端只負責顯示與呼叫 API，因此使用者上傳的 PPTX 也能跟內建簡報一樣
+        // 直接在頁面內逐頁瀏覽，不需下載檔案。
+
+        const slideCategoryLabels = {
+            subA1: '1-1 一致性與法定傳染病通報',
+            subA2: '1-2 c503一般作業流程與異常訊號故障排除',
+            subA3: '1-3 Cobas b 211異常訊號故障排除與QC設定',
+            zoneB: '2 COVER C1人員考區（Sebia）',
+            '': '未分類 / 一般補充教材'
+        };
+
+        let cachedSlidesList = []; // 最近一次從後端取得的簡報清單快取，供開啟檢視器使用
+
+        function formatFileSize(bytes) {
+            if (!bytes && bytes !== 0) return '';
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
+
+        function buildSlideCardHTML(s) {
+            const catLabel = s.categoryLabel || slideCategoryLabels[s.category] || slideCategoryLabels[''];
+            const groupKey = s.group || 'grpBio';
+            const jumpBtn = s.category
+                ? `<button onclick="goToExamModule('${s.category}', '${groupKey}')" class="flex-1 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">📝 前往對應考題作答</button>`
+                : `<span class="flex-1 text-xs text-slate-400 flex items-center justify-center">未連結考題模組</span>`;
+            const openBtn = `<button onclick="openSlide('${s.id}')" class="flex-1 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg transition-colors flex items-center justify-center gap-1">👁️ 直接開啟瀏覽</button>`;
+            const deleteBtn = s.isBuiltin
+                ? ''
+                : `<button onclick="deleteUploadedSlide('${s.id}')" class="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2 py-1 rounded-lg transition-colors">🗑️ 刪除</button>`;
+            const badge = s.isBuiltin
+                ? `<span class="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded whitespace-nowrap">內建教材</span>`
+                : `<span class="text-xs font-semibold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded whitespace-nowrap">自行上傳</span>`;
+            const pageLabel = s.pageCount ? `<span class="text-slate-400">共 ${s.pageCount} 頁</span>` : '';
+            const dateLabel = s.dateAdded ? `<span class="text-slate-400">上傳於 ${s.dateAdded}</span>` : '';
+
+            return `
+                <div class="slide-card bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="text-2xl">📊</span>
+                        ${badge}
+                    </div>
+                    <h4 class="text-sm font-bold text-slate-900 break-all leading-snug">${s.title}</h4>
+                    <p class="text-xs text-slate-500 flex-grow">${s.desc || ''}</p>
+                    <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span class="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-medium">${catLabel}</span>
+                        ${pageLabel}
+                        ${dateLabel}
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        ${openBtn}
+                        ${jumpBtn}
+                    </div>
+                    ${deleteBtn ? `<div class="text-right">${deleteBtn}</div>` : ''}
+                </div>
+            `;
+        }
+
+        async function renderSlidesGrid() {
+            const grid = document.getElementById('slides-grid');
+            if (!grid) return;
+            grid.innerHTML = `<p class="text-xs text-slate-400 col-span-full text-center py-6">載入簡報清單中…</p>`;
+            try {
+                const res = await fetch('/api/slides');
+                if (!res.ok) throw new Error('無法取得簡報清單');
+                cachedSlidesList = await res.json();
+                const filtered = cachedSlidesList.filter(s => (s.group || 'grpBio') === currentGroupKey);
+                grid.innerHTML = filtered.length
+                    ? filtered.map(buildSlideCardHTML).join('')
+                    : `<p class="text-xs text-slate-400 col-span-full text-center py-6">本組別尚未上傳任何教育訓練投影片，請由管理者後台新增。</p>`;
+            } catch (err) {
+                console.error(err);
+                grid.innerHTML = `<p class="text-xs text-rose-500 col-span-full text-center py-6">❌ 讀取簡報清單失敗，請確認後端伺服器 (Flask) 是否已啟動。</p>`;
+            }
+        }
+
+        // --- 簡報檢視器 (Slide Viewer)：內建與上傳簡報皆已由後端轉為每頁圖片，直接在頁面內瀏覽，不需下載 ---
+        let slideViewerState = {
+            images: [],       // 目前開啟的簡報，每頁圖片路徑陣列
+            index: 0,         // 目前頁碼 (0-based)
+            title: '',
+            downloadUrl: '',
+            downloadName: ''
+        };
+
+        function openSlide(id) {
+            const entry = cachedSlidesList.find(s => s.id === id);
+            if (!entry) {
+                alert('找不到該份簡報，可能已被刪除，請重新整理頁面。');
+                return;
+            }
+            const images = [];
+            for (let i = 1; i <= entry.pageCount; i++) {
+                const num = String(i).padStart(2, '0');
+                images.push(`${entry.imageFolder}/slide-${num}.png`);
+            }
+            openSlideViewer({
+                images,
+                title: entry.title,
+                downloadUrl: entry.downloadUrl,
+                downloadName: entry.filename
+            });
+        }
+
+        function openSlideViewer({ images, title, downloadUrl, downloadName }) {
+            slideViewerState = { images, index: 0, title, downloadUrl, downloadName };
+            document.getElementById('slide-viewer-title').textContent = title;
+
+            const downloadBtn = document.getElementById('slide-viewer-download');
+            if (downloadUrl) {
+                downloadBtn.href = downloadUrl;
+                downloadBtn.setAttribute('download', downloadName || '');
+                downloadBtn.classList.remove('hidden');
+            } else {
+                downloadBtn.classList.add('hidden');
+            }
+
+            renderSlideThumbs();
+            updateSlideViewerImage();
+            document.getElementById('slide-viewer-modal').classList.remove('hidden');
+        }
+
+        function updateSlideViewerImage() {
+            const { images, index } = slideViewerState;
+            if (!images.length) return;
+            document.getElementById('slide-viewer-image').src = images[index];
+            document.getElementById('slide-viewer-page-info').textContent = `第 ${index + 1} / ${images.length} 頁`;
+
+            document.querySelectorAll('.slide-thumb-btn').forEach((btn, i) => {
+                btn.className = i === index
+                    ? 'slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border-2 border-teal-400 shrink-0 overflow-hidden opacity-100'
+                    : 'slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border border-slate-600 shrink-0 overflow-hidden opacity-50 hover:opacity-90 transition-opacity';
+            });
+        }
+
+        function renderSlideThumbs() {
+            const container = document.getElementById('slide-viewer-thumbs');
+            container.innerHTML = slideViewerState.images.map((src, i) => `
+                <button class="slide-thumb-btn w-10 h-7 sm:w-12 sm:h-8 rounded border border-slate-600 shrink-0 overflow-hidden opacity-50 hover:opacity-90 transition-opacity" onclick="goToSlidePage(${i})">
+                    <img src="${src}" class="w-full h-full object-cover" alt="第 ${i + 1} 頁縮圖">
+                </button>
+            `).join('');
+        }
+
+        function goToSlidePage(i) {
+            if (i < 0 || i >= slideViewerState.images.length) return;
+            slideViewerState.index = i;
+            updateSlideViewerImage();
+        }
+
+        function slideViewerPrev() {
+            goToSlidePage(slideViewerState.index - 1);
+        }
+
+        function slideViewerNext() {
+            goToSlidePage(slideViewerState.index + 1);
+        }
+
+        function closeSlideViewer() {
+            document.getElementById('slide-viewer-modal').classList.add('hidden');
+        }
+
+        // 鍵盤左右鍵切換頁面、ESC 關閉
+        document.addEventListener('keydown', (e) => {
+            const modal = document.getElementById('slide-viewer-modal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (e.key === 'ArrowLeft') slideViewerPrev();
+            else if (e.key === 'ArrowRight') slideViewerNext();
+            else if (e.key === 'Escape') closeSlideViewer();
+        });
+
+        // 教材新增/刪除已移至管理者後台。
+
+        // --- 教育訓練投影片區 / 考試區 切換 ---
+        function switchMainPanel(panel) {
+            const slidesPanel = document.getElementById('panel-slides');
+            const examPanel = document.getElementById('panel-exam');
+            const btnSlides = document.getElementById('mode-btn-slides');
+            const btnExam = document.getElementById('mode-btn-exam');
+
+            if (panel === 'slides') {
+                slidesPanel.classList.remove('hidden');
+                examPanel.classList.add('hidden');
+                btnSlides.classList.add('active');
+                btnExam.classList.remove('active');
+                renderSlidesGrid();
+            } else {
+                slidesPanel.classList.add('hidden');
+                examPanel.classList.remove('hidden');
+                btnSlides.classList.remove('active');
+                btnExam.classList.add('active');
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 由簡報卡片或對照手冊點擊「前往對應考題作答」時呼叫
+        function goToExamModule(categoryKey, groupKey) {
+            toggleSopModal(false);
+            groupKey = groupKey || 'grpBio';
+            if (groupKey !== currentGroupKey) {
+                switchGroup(groupKey);
+            }
+            switchMainPanel('exam');
+            if (groupKey === 'grpBio') {
+                if (categoryKey === 'zoneB') {
+                    switchCategory('zoneB');
+                } else {
+                    switchCategory('zoneA');
+                    switchSubCategory(categoryKey);
+                }
+            } else {
+                switchDynamicCategory(categoryKey);
+            }
+        }
+
+
+        const cat1Questions = [
+            { id: 1, category: "行政交接", question: "1. 依據急生化退件檢體標準流程，關於退件時的系統備註與行政交接，下列何者正確？", options: ["(A) 於 Comment 3 記載原因，並留下條碼號碼執行班次交接", "(B) 於 Comment 1 記載原因，並留下條碼號碼執行班次交接", "(C) 於 Comment 3 記載原因，但無需記錄條碼號碼", "(D) 只需於交接班時口頭告知，無需在系統 Comment 記載"], correct: 0, explanation: "SOP 規範：急生化退件時必須於 Comment 3 記載退件原因，且交接班時必須留下完整的條碼號碼執行班次交接。" },
+            { id: 2, category: "小兒檢體", question: "2. 關於小兒檢體（A8、PNI、NBC）的溶血處理規範，下列何項敘述符合標準？", options: ["(A) 溶血一律辦理退件重採，不予以操作", "(B) 溶血不退件，若 K 達危險臨界值須通報並註明溶血價數", "(C) 溶血不退件，且不論 K 值高低皆無需註明溶血價數", "(D) 溶血時需直接進行 10 倍手工稀釋後上機"], correct: 1, explanation: "小兒檢體採集不易且極為珍貴，原則上溶血不辦理退件。但若 K 達到危急值，必須辦理通報並特別標註溶血價數（如 2+）供臨床評估。" },
+            { id: 3, category: "採血糖管", question: "3. 當檢體發生 EDTA 試管汙染時，常呈現何種異常檢驗結果組合？", options: ["(A) K 異常升高、Ca 異常降低", "(B) Na 異常升高、K 異常降低", "(C) Ca 異常升高、K 異常降低", "(D) K 與 Ca 皆呈現異常升高"], correct: 0, explanation: "EDTA 試管含有 K2EDTA/K3EDTA，會釋放高濃度鉀離子導致 K 假性升高；同時 EDTA 會強烈螯合血清中的 Ca 離子，導致測得 Ca 假性大幅降低。" },
+            { id: 4, category: "極值處理", question: "4. 依據 GOT (AST) 稀釋與發出邏輯，當遇到極高值須進行稀釋時，下列何者符合規範？", options: ["(A) 手工稀釋 10 倍（50ul 檢體 + 450ul 水），機器自動稀釋 3 倍，最終發出 > 7000 U/L", "(B) 手工稀釋 5 倍（100ul 檢體 + 400ul 水），機器自動稀釋 2 倍，最終發出 > 5000 U/L", "(C) 直接交由機器自動稀釋 30 倍，不需手工預稀釋", "(D) 手工稀釋 10 倍，最終發出 > 10000 U/L"], correct: 0, explanation: "GOT 極高值標準處置：採用手工 10 倍 (50ul 檢體 + 450ul 稀釋水) 搭配機器自動 3 倍稀釋，總稀釋倍數為 30 倍，最終最高可發出 > 7000 U/L。" },
+            { id: 5, category: "極值處理", question: "5. 當 ALT 測得低值（< 5）進行 1:1 已知濃度 QC 稀釋驗證時，若已知 QC 濃度為 31，混合後測得數值為 15.9，其計算結論與報告發出方式為何？", options: ["(A) 計算結果驗證無基質干擾，報告發出 < 5", "(B) 計算結果顯示有干擾，報告發出 15.9", "(C) 將實測值乘以 2 後發出 31.8", "(D) 計算結果不合，須通知臨床重抽"], correct: 0, explanation: "理論預期混合數值為 31 / 2 = 15.5 U/L。實測 15.9 與預期值接近，證明無基質干擾，故可報告發出原低值結果 < 5 U/L。" },
+            { id: 6, category: "檢體保存", question: "6. 關於檢體保存與委外注意事項，下列何者敘述正確？", options: ["(A) 黃頭管時效為送檢起 3 天內，綠頭管為 4 小時內", "(B) 黃頭管時效為送檢起 4 小時內，綠頭管為 3 天內", "(C) CSF 檢體應分裝為兩管後進行冷凍保存", "(D) 冷凍尿液檢體保存時必須裝滿試管以防蒸發"], correct: 0, explanation: "黃頭管 (SST) 委外時效為送檢 3 天內，綠頭管 (Heparin) 為 4 小時內；CSF 冷凍保存前嚴禁分裝，尿液冷凍保存應維持 7 分滿。" },
+            { id: 7, category: "品質追溯", question: "7. 依據保養後檢體追溯標準（CG010-L08），故障前檢體複測的允收標準 CV% 為何？", options: ["(A) 2.77% CV", "(B) 5.00% CV", "(C) 1.50% CV", "(D) 10.0% CV"], correct: 0, explanation: "依據 CG010-L08/L09 規範，保養或維修後檢體追溯複測之允收標準為 2.77% CV，若未達標須擴大追溯 3 筆檢體並填寫不符合事件單。" },
+            { id: 8, category: "法定傳染病", question: "8. 關於退伍軍人菌尿液抗原陽性之通報與登記流程，下列何者正確？", options: ["(A) 須口頭通報感控，並登記於「生化組委外感控通知單」", "(B) 只需於 LIS 系統發出報告，不需通報感控", "(C) 須傳 Line 群組，不需登記於紙本通知單", "(D) 填寫登革熱 NS1 快篩登記表"], correct: 0, explanation: "退伍軍人菌尿液抗原陽性時，必須口頭通報感控單位，並確實登記於「生化組委外感控通知單」。" },
+            { id: 9, category: "法定傳染病", question: "9. 關於公費登革熱快篩結果為陽性時之處理流程，下列何者正確？", options: ["(A) 口頭通報感控 -> 登記於生化組委外感控通知單 -> 填寫宜蘭縣登革熱 NS1 登記表 -> 傳 Line 群組 -> 留紅頭管至委外感控檢體放置處", "(B) 直接將綠頭管送至委外感控冰箱即可，無需通報", "(C) 口頭通報感控後直接將檢體丟棄", "(D) 僅需傳 Line 群組告知感控，無需填寫紙本登記表"], correct: 0, explanation: "公費登革熱快篩陽性需完成口頭通報感控、登記委外感控單、填寫宜蘭縣 NS1 登記表、Line 群組通報，並保留紅頭檢體管於指定感控位置。" },
+            { id: 10, category: "應變處置", question: "10. 若生化組遇到停水緊急狀況，當純水電阻值低於多少時，須切換至紅色共用迴路？", options: ["(A) < 10 mΩ·cm", "(B) < 5 mΩ·cm", "(C) < 1 mΩ·cm", "(D) < 0.1 mΩ·cm"], correct: 0, explanation: "停水緊急應變：事先備足 RO 水補充至倉庫儲水桶；當水質電阻值降至 < 10 mΩ·cm 時，須立即切換至紅色共用迴路。" }
+        ];
+
+        const cat2Questions = [
+            { id: 1, category: "上機模式", question: "1. 關於 Cobas pro c503 急診上機模式（STAT Loading）的架子方向與位置，下列何者正確？", options: ["(A) 位於 SSU 後方急診進樣口，將樣品架窄端朝右放入，條碼朝向閱讀器", "(B) 位於 SSU 前方，將樣品架寬端朝右放入", "(C) 直接放入常規進樣軌道，系統會自動辨識急診", "(D) 只能在 Standby 模式下透過 SSU 俯視裝載"], correct: 0, explanation: "STAT 急診進樣部位於 SSU 後方，放置時須將樣品架窄端朝右放入傳送軌道，條碼面向閱讀器，系統會插隊優先處理。" },
+            { id: 2, category: "試藥管理", question: "2. 關於 c503 試劑狀態判定與更換時機，下列何者非立即或預先更換之指標？", options: ["(A) 試劑狀態顯示「充足 (OK) 且未逾期」", "(B) 試劑顯示空盒或被遮蔽 (Masked)", "(C) 液位低於警告閾值 (通常為 10%)", "(D) 預測存量低於設定之當日平均消耗量"], correct: 0, explanation: "試劑狀態顯示充足且效期正常時不需更換。空盒/遮蔽、低液位(<10%)與低於日需求量時均需預先或立即更換。" },
+            { id: 3, category: "校正品管", question: "3. 執行 Cobas c503 校正 (Calibration) 與品質管制 (QC) 時，校正液與品管液應分別置於何種顏色之專用樣品架？", options: ["(A) 校正液：黑色樣品架；品管液：白色樣品架", "(B) 校正液：白色樣品架；品管液：黑色樣品架", "(C) 校正液與品管液皆使用黑色樣品架", "(D) 校正液與品管液皆使用紅色急診架"], correct: 0, explanation: "c503 架位規範：所有校正液 (Calibration) 必須放置於黑色專用架；品管液 (QC) 必須放置於白色專用架。" },
+            { id: 4, category: "日常保養", question: "4. 關於 c503 日常清洗架 (Wash Rack) 之槽位液體配置，下列何者完全正確且不得混淆？", options: ["(A) 槽位 2：600 μL ISE Cleaning Solution (SysClean)；槽位 3：600 μL Activator", "(B) 槽位 2：600 μL Activator；槽位 3：600 μL SysClean", "(C) 槽位 1：600 μL SysClean；槽位 2：600 μL 生理食鹽水", "(D) 槽位 2：600 μL 蒸餾水；槽位 3：600 μL SysClean"], correct: 0, explanation: "Wash Rack 絕對不可混淆配置： Slot 2 放入 600 μL SysClean，Slot 3 放入 600 μL Activator，放錯會導致電極受損或校正失敗。" },
+            { id: 5, category: "警報排除", question: "5. 當 c503 數據出現警報代碼「>Abs」時，其可能的原因不包括下列何者？", options: ["(A) 測量池燈泡完全熄滅無電流", "(B) 檢體反應吸光度過高或濃度超出線性", "(C) 檢體存在嚴重脂血 (Lipemia) 或濁度干擾", "(D) 光學測量路徑上有異物遮蔽"], correct: 0, explanation: ">Abs 代表吸光度超過極限，主因為檢體濃度過高、嚴重脂血/濁度干擾或光路障礙；燈泡熄滅會引發光學空白或電流異常警報。" },
+            { id: 6, category: "警報排除", question: "6. 數據警報「>Cuvet」代表 ABS Cell blank abnormal，主要的原因為何？", options: ["(A) 反應杯 (Cuvette) 嚴重汙染或有髒汙，影響空白光學讀值", "(B) 試劑盒條碼無法讀取", "(C) ISE 鉀電極效期已過期", "(D) 洗衣精 (Detergent) 瓶內無液體"], correct: 0, explanation: ">Cuvet (ABS Cell blank abnormal) 說明特定反應杯在細胞空白光學測定時讀值異常，多因反應杯髒汙、刮傷或有附著物。" },
+            { id: 7, category: "警報排除", question: "7. 當系統出現「Det.S」警報時，應採取何種排除動作？", options: ["(A) 檢查並補充特殊清洗劑 (Detergent) 存量", "(B) 更換反應測量池之鹵素燈泡", "(C) 重新掃描 ISE 電極條碼", "(D) 執行水浴槽排氣流程"], correct: 0, explanation: "Det.S 即 Det. Short (Detergent Short)，代表特殊清洗液存量不足，需補充對應之 Detergent。" },
+            { id: 8, category: "維護保養", question: "8. 關於 c503 鹵素燈泡與反應杯的定期更換週期規範，下列何者正確？", options: ["(A) 燈泡每三個月更換；反應杯每個月更換", "(B) 燈泡每個月更換；反應杯每三個月更換", "(C) 燈泡與反應杯皆為每年更換一次", "(D) 燈泡每半年更換；反應杯每半年更換"], correct: 0, explanation: "定期更換規範：鹵素燈泡每 3 個月定期更換；反應塑膠杯 (Segment Cuvettes) 每 1 個月定期更換。" },
+            { id: 9, category: "維護保養", question: "9. 更換 c503 新反應杯時，鎖上螺絲的重要操作技巧為何？", options: ["(A) 採取「放一個鎖一個」方式，避免反應杯歪斜破裂", "(B) 先將所有反應杯放好後，一次用電動螺絲起子全力鎖緊", "(C) 螺絲不需要鎖，直接壓入卡槽即可", "(D) 塗抹潤滑油後再鎖緊"], correct: 0, explanation: "更換反應杯時為防止基座不平整或塑膠杯受到不均勻應力而歪斜破裂，必須嚴格遵守「放一個鎖一個」的微調原則。" },
+            { id: 10, category: "維護保養", question: "10. 更換全新的 ISE 電極後，解除 ISE 單元屏蔽 (Mask) 的標準程序為何？", options: ["(A) 掃描 2D 條碼登錄 -> 執行 Daily Wash Rack 與 ISE Check -> 品管允收後系統自動解屏蔽", "(B) 直接手動點擊 Unmask，不需執行洗滌或校正", "(C) 關機重開後自動解除屏蔽", "(D) 連續上機 10 筆病人檢體後自動解除"], correct: 0, explanation: "ISE 更換電極標準解鎖：掃描條碼登錄新批號效期 -> 執行 Daily Wash Rack 與 ISE 檢查 -> 校正與品管合格後自動解除屏蔽。" }
+        ];
+
+        const cat3Questions = [
+            { id: 1, category: "故障排除", question: "1. 遇 Cobas b 211 出現 SD Wash error 或 FMS error 時，進入管路潤濕選單的正確點選路徑為何？", options: ["(A) 主畫面 System -> Utilities -> Fluid actions -> Wetting routines", "(B) 主畫面 QC -> Material -> Fluid actions -> Wetting routines", "(C) 主畫面 Calibration -> Utilities -> Wash routines", "(D) 主畫面 Info -> System -> Hardware -> Reset"], correct: 0, explanation: "b 211 故障排除路徑：System -> Utilities -> Fluid actions -> Wetting routines。" },
+            { id: 2, category: "故障排除", question: "2. 在 Wetting routines 中選取 BG 並點擊 Do 後，畫面提示出現什麼文字時，方可進行下一步手動抽拉？", options: ["(A) Wet sample path", "(B) System Ready", "(C) Calibration Ok", "(D) Air bubble detected"], correct: 0, explanation: "按下 Do 後，系統會啟動閥門，當螢幕提示「Wet sample path」時，表示管路位置已切換至可手動操作路徑。" },
+            { id: 3, category: "故障排除", question: "3. 執行手動管路空氣抽拉測試時，正確的操作方式與次數為何？", options: ["(A) 先用空針打空氣，再向後抽拉，反覆執行 2-3 次檢查異物", "(B) 用空針全力持續注入蒸餾水 10 次", "(C) 以針筒強力高壓抽拉 20 次", "(D) 抽拉 1 次後立即關閉儀器電源"], correct: 0, explanation: "標準動作：先以空針注入空氣，再向後抽拉（感受阻力與觀察有無異物），重複執行 2-3 次。" },
+            { id: 4, category: "故障排除", question: "4. 若空氣抽拉後仍無法排除管路異物或阻塞，進階「打水」處理時的最重要注意事項為何？", options: ["(A) 打水時請輕輕打，切勿一次強力灌入，避免管路爆裂或感測器受損", "(B) 必須使用高壓水槍強力一次推入", "(C) 只能使用生理食鹽水，嚴禁使用純水", "(D) 打水後不需執行 Wash 與 Cali 即可直接測量病人"], correct: 0, explanation: "若進階以水清洗管路，操作時必須「輕輕推打」，強行高壓推入會損壞內部精密感應器與流路閥門。" },
+            { id: 5, category: "故障排除", question: "5. 完成管路抽拉或打水處置後，恢復儀器標準狀態的後續 Quick access 步驟為何？", options: ["(A) Quick access -> Wash -> Cali -> 觀察並帶入 QC", "(B) Quick access -> Shutdown -> Restart", "(C) Quick access -> Measure -> Sample", "(D) 直接點選 Ready 開始上機"], correct: 0, explanation: "疏通管路後，必須順序點選 Wash（清洗流路）與 Cali（重新校正），確認校正通過並帶入 QC 允收後方可發出報告。" },
+            { id: 6, category: "QC設定", question: "6. 在 Cobas b 211 設定全新批號品管 (QC New Lot) 時，第一個必須點擊並刷入的條碼種類為何？", options: ["(A) 點選 Set 刷入 Material Code (第一個條碼)", "(B) 點選 Range 刷入 BG Code", "(C) 直接刷入 COOX Code", "(D) 刷入機器機號 Barcode"], correct: 0, explanation: "QC New Lot 設定流程：點選 Set -> 從仿單刷入第一個條碼 Material Code 建立材質基礎。" },
+            { id: 7, category: "QC設定", question: "7. 在 QC New Lot 建立過程中，點選「Range」按鈕後應刷入仿單上的哪一個條碼？", options: ["(A) 第二個條碼 (BG Code)", "(B) 第一個條碼 (Material Code)", "(C) 第四個條碼 (COOX Code)", "(D) 試紙盒外包裝條碼"], correct: 0, explanation: "點選 Range 後，應刷入仿單上的第二個條碼 (BG Code)，以載入血氣分析項目的靶值範圍。" },
+            { id: 8, category: "QC設定", question: "8. 設定 Cobas b 211 全新品管批號時，最後刷入的條碼為下列何者？", options: ["(A) 第四個條碼 (COOX Code)", "(B) 第一個條碼 (Material Code)", "(C) 第二個條碼 (BG Code)", "(D) 第三個條碼 (Auto-Cali Code)"], correct: 0, explanation: "新批號設定最後一步：刷入第四個條碼 (COOX Code) 完成全套血紅素光學測量參數的設定。" },
+            { id: 9, category: "連線處置", question: "9. 當 Cobas b 211 發生 LIS 連線傳輸異常時，硬體實體線路的優先排查重點不包括下列何者？", options: ["(A) 檢查 IP 橋接器電源線及網線是否脫落或接觸不良", "(B) 檢查網路孔 Link 指示燈是否閃爍（閃爍代表成功接上）", "(C) 確認 LIS 端伺服器與通訊狀態是否正常", "(D) 智慧光學測量室是否運轉"], correct: 0, explanation: "連線異常應優先檢查網絡實體層（IP 橋接器電源、網絡 Link 燈號及 LIS 伺服器通訊），與機台內部光學室無關。" },
+            { id: 10, category: "連線處置", question: "10. 若檢查發現 IP 橋接器後方的網路孔 Link 燈號完全不亮，代表何種狀況？", options: ["(A) 實體網路線路中斷或未成功連接至網絡", "(B) 網路傳輸極度順暢", "(C) 機器正在進行自動校正", "(D) 品管批號設定錯誤"], correct: 0, explanation: "Link 指示燈不亮代表實體物理層未建立連線（線路鬆脫、斷線或集線器故障）。" }
+        ];
+
+        const cat4Questions = [
+            { id: 1, category: "基礎維護", question: "1. 關於 Sebia 儀器執行「Short priming (基礎管路重置/排氣)」的步驟，下列何者正確？", options: ["(A) 進入 Settings 輸入密碼 -> 點擊 Start -> 選擇 Short priming 執行", "(B) 於主畫面直接點擊 Stop 即可自動執行", "(C) 拔除電源線後重開機即自動執行", "(D) 進入 Maintenance -> 點擊 Deep Clean"], correct: 0, explanation: "Short priming 路徑：進入 Settings -> 輸入密碼 -> 點擊 Start -> 選取 Short priming 執行管路排氣與清洗。" },
+            { id: 2, category: "硬體排除", question: "2. 當 Sebia 螢幕報錯「Cup loader / Distributor initialization error」（Cup 卡在轉盤）時，標準排除方式為何？", options: ["(A) 將儀器斷電（關機），手動將卡住的 Cup 取出，再重新開機初始化", "(B) 在通電狀態下用手硬將轉盤拉開", "(C) 直接點擊 Start 繼續強制運轉", "(D) 倒入稀釋水沖刷轉盤"], correct: 0, explanation: "轉盤卡死時，為保護步進馬達，必須先「斷電關機」，手動清理卡住的 Cup 後再開機進行初始化。" },
+            { id: 3, category: "硬體排除", question: "3. 遇到「Error in rack translation to pickup or release」（Rack 卡在操作區內）時，排除方式不包括下列何者？", options: ["(A) 按 Stop 取出後，於 Start 選擇 Short prime", "(B) 斷電（關機），手動將 Rack 取出", "(C) 使用鐵鎚敲擊 Rack 傳送軌道", "(D) 檢查操作區內是否有異物阻礙軌道"], correct: 0, explanation: "Rack 卡住可透過軟體 Stop 後執行 Short prime，或斷電手動取出 Rack，嚴禁粗暴敲擊。" },
+            { id: 4, category: "管路異常", question: "4. 發生「Filling error: water container not well connected」（Water 吸取不順利）時，應執行的第一線排除動作為何？", options: ["(A) 更換 Filter（濾心），並將水源瓶拔起重新插好確認連線", "(B) 體更換主機板 (PCB)", "(C) 調整負壓廢水瓶壓力", "(D) 清洗毛細管電泳槽"], correct: 0, explanation: "水容器連接錯誤或吸水不順時，應重新插拔水源瓶確認接頭密合，並更換水路 Filter (濾心)。" },
+            { id: 5, category: "硬體排除", question: "5. 當 Cup 卡在滑軌上方（關鍵字：Cup loading error / please remove it）時，正確的手動排除技巧為何？", options: ["(A) 淨空卡在滑軌上方的 Cup，使用鐵夾往下壓，使 Cup 順利往滑軌處掉落", "(B) 用水槍往滑軌上方高壓噴水", "(C) 用磁鐵將 Cup 吸引出來", "(D) 忽視報錯繼續按 Start"], correct: 0, explanation: "Cup 卡在滑軌上方時，淨空上方後使用鐵夾輕柔往下壓，使其順應滑軌掉落即可復位。" },
+            { id: 6, category: "進階異常", question: "6. 當 Sebia 出現「Vacuum error」（壓力異常）警報且軟體報錯時，通常需要更換何種零件？", options: ["(A) 更換真空管及 Pressure PCB 壓力感測板", "(B) 更換電源線與螢幕", "(C) 更換試劑托盤轉盤", "(D) 更換樣品條碼掃描槍"], correct: 0, explanation: "Vacuum error 指抽真空負壓異常，故障點通常為真空管路破裂漏氣或 Pressure PCB 壓力感應板失靈。" },
+            { id: 7, category: "進階異常", question: "7. 出現「Buffer tank error」警報時，醫檢師應進行何種清洗作業？", options: ["(A) 清洗 Anodic tank & Buffer tank（陽極槽與毛細管清洗槽）", "(B) 清洗蒸餾水外接桶", "(C) 清洗廢水排放管路", "(D) 浸泡綠頭採血糖管"], correct: 0, explanation: "Buffer tank error 代表緩衝液槽液位或結晶附著，需手動清洗 Anodic tank 與 Buffer tank 移除鹽類結晶。" },
+            { id: 8, category: "進階異常", question: "8. 報錯「Cathodic tank filling error」（陰極槽充填異常，水無法流通）時，其可能原因與排除方式為何？", options: ["(A) 清潔 Over flow 並更換 Over flow sensor", "(B) 更換鹵素燈泡", "(C) 調整 ISE 電極鎖緊度", "(D) 重新設定 LIS IP 位址"], correct: 0, explanation: "Cathodic tank 充水異常多為溢流口堵塞或 Sensor 故障，需清潔 Over flow 流路並更換 Over flow sensor。" },
+            { id: 9, category: "進階異常", question: "9. 若 Sebia 儀器頻繁發生「廢水排空不良」且伴隨負壓不足，通常是什麼原因？需要如何處置？", options: ["(A) 負壓不足，需要調整廢水瓶與真空壓力", "(B) 試劑過期，需要更換新試劑", "(C) 條碼讀取器鏡頭髒汙，需要用酒精擦拭", "(D) 採血管蓋子未打開"], correct: 0, explanation: "廢水排空不順多因系統真空負壓不足，需檢查廢水瓶密封度並調整負壓閥。" },
+            { id: 10, category: "工程叫修", question: "10. 當 Sebia 發生「報告無法傳送」經排查為內部硬體故障，或是手臂嚴重干涉卡死時，屬於何種層級之處置？", options: ["(A) 內部主機板電磁故障或機械結構損傷，需聯繫原廠工程師叫修與更換主機板", "(B) 醫檢師自行拆開主機板銲接", "(C) 只要重複執行 Short prime 即可完全解決", "(D) 直接將儀器報廢不需處理"], correct: 0, explanation: "報告傳送失敗（主機板電磁故障）或手臂重大機械干涉，超出日常一線排除範圍，應聯繫原廠工程師更換零組件。" }
+        ];
+
+        function renumberQuestions(questions) {
+            return questions.map((q, idx) => ({ ...q, id: idx + 1 }));
+        }
+
+        // --- Data Structure with Sub-tabs for Zone A ---
+        const allQuizData = {
+            subA1: {
+                title: "1-1. 一致性與法定傳染病通報",
+                desc: "涵蓋急生化退件標準作業、小兒檢體處理、EDTA試管汙染鑑別、極值稀釋與檢體保存、品質追溯及法定傳染病（退伍軍人菌、登革熱）通報流程。",
+                questions: renumberQuestions([...cat1Questions])
+            },
+            subA2: {
+                title: "1-2. c503一般作業流程與異常訊號故障排除",
+                desc: "涵蓋 Cobas pro c503 急診上機模式、試藥管理、校正與品管架位、日常清洗架配置、>Abs 與 >Cuvet 警報排除及燈泡與反應杯更換規範。",
+                questions: renumberQuestions([...cat2Questions])
+            },
+            subA3: {
+                title: "1-3. Cobas b 211異常訊號故障排除與QC設定",
+                desc: "涵蓋 Cobas b 211 管路潤濕路徑（Wetting routines）、空氣抽拉與打水處置、全新品管批號設定（Set/Range/COOX）及 LIS 網路連線故障排除。",
+                questions: renumberQuestions([...cat3Questions])
+            },
+            zoneB: {
+                title: "2、COVER C1人員考區 考核卷",
+                desc: `本考區涵蓋 Sebia 異常訊號故障排除與特殊注意事項，共 ${cat4Questions.length} 題選擇題，及格標準為 80 分。答題完成後請點擊「提交試卷結算成績」。`,
+                questions: renumberQuestions([...cat4Questions])
+            }
+        };
+
+        let currentCatKey = 'subA1'; // Default active tab
+        let isSubmittedMap = {
+            subA1: false,
+            subA2: false,
+            subA3: false,
+            zoneB: false
+        };
+        let userAnswersMap = {
+            subA1: new Array(allQuizData.subA1.questions.length).fill(null),
+            subA2: new Array(allQuizData.subA2.questions.length).fill(null),
+            subA3: new Array(allQuizData.subA3.questions.length).fill(null),
+            zoneB: new Array(allQuizData.zoneB.questions.length).fill(null)
+        };
+        let flaggedQuestionsMap = {
+            subA1: new Array(allQuizData.subA1.questions.length).fill(false),
+            subA2: new Array(allQuizData.subA2.questions.length).fill(false),
+            subA3: new Array(allQuizData.subA3.questions.length).fill(false),
+            zoneB: new Array(allQuizData.zoneB.questions.length).fill(false)
+        };
+        let chartInstance = null;
+
+        // ==================================================================
+        // 其餘 5 組別的動態考題頁籤 / 題目 —— 全部由後台管理者建立與維護，
+        // 前端只負責讀取 /api/quiz-categories 與 /api/quiz-questions 並渲染。
+        // ==================================================================
+        let dynamicCategoriesCache = {}; // { groupKey: [ {id,title,desc,...}, ... ] }
+
+        async function renderDynamicExamTabs() {
+            const listBox = document.getElementById('dynamic-exam-tabs-list');
+            const emptyBox = document.getElementById('dynamic-exam-tabs-empty');
+            listBox.innerHTML = `<p class="text-xs text-slate-400">載入考題頁籤中…</p>`;
+            emptyBox.classList.add('hidden');
+            try {
+                const res = await fetch(`/api/quiz-categories?group=${currentGroupKey}`);
+                const cats = await res.json();
+                dynamicCategoriesCache[currentGroupKey] = cats;
+                if (!cats.length) {
+                    listBox.innerHTML = '';
+                    emptyBox.classList.remove('hidden');
+                    document.getElementById('current-quiz-title').innerHTML = `<span class="text-teal-600">📝</span> ${GROUPS[currentGroupKey].label} 尚無考題`;
+                    document.getElementById('current-quiz-desc').innerText = '本組別尚未建立任何考題頁籤，請由管理者後台新增。';
+                    document.getElementById('quiz-questions-list').innerHTML = '';
+                    document.getElementById('quick-jump-grid').innerHTML = '';
+                    document.getElementById('stat-progress').innerText = '0 / 0';
+                    document.getElementById('stat-flagged').innerText = '0 題';
+                    document.getElementById('result-dashboard').classList.add('hidden');
+                    return;
+                }
+                listBox.innerHTML = cats.map(c => `<button onclick="switchDynamicCategory('${c.id}')" id="dyn-tab-${c.id}" class="tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent">📝 ${escapeHtml(c.title)}</button>`).join('');
+                await switchDynamicCategory(cats[0].id);
+            } catch (err) {
+                console.error(err);
+                listBox.innerHTML = `<p class="text-xs text-rose-500">❌ 讀取考題頁籤失敗</p>`;
+            }
+        }
+
+        async function ensureDynamicCategoryLoaded(catId) {
+            if (allQuizData[catId]) return;
+            const cats = dynamicCategoriesCache[currentGroupKey] || [];
+            const catMeta = cats.find(c => c.id === catId);
+            const res = await fetch(`/api/quiz-questions?category=${catId}`);
+            const questions = await res.json();
+            const normalized = renumberQuestions(questions.map(q => ({
+                id: q.id,
+                category: q.tag || '一般',
+                question: q.question,
+                options: q.options,
+                correct: q.correct,
+                explanation: q.explanation
+            })));
+            allQuizData[catId] = {
+                title: catMeta ? catMeta.title : '考題頁籤',
+                desc: catMeta ? (catMeta.desc || `本頁籤共 ${normalized.length} 題選擇題，及格標準為 80 分。`) : '',
+                questions: normalized
+            };
+            userAnswersMap[catId] = new Array(normalized.length).fill(null);
+            flaggedQuestionsMap[catId] = new Array(normalized.length).fill(false);
+            isSubmittedMap[catId] = false;
+        }
+
+        async function switchDynamicCategory(catId) {
+            await ensureDynamicCategoryLoaded(catId);
+            currentCatKey = catId;
+            document.querySelectorAll('#dynamic-exam-tabs-list .tab-btn').forEach(btn => {
+                const active = btn.id === `dyn-tab-${catId}`;
+                btn.className = active
+                    ? 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-md flex items-center justify-center gap-1.5 border border-teal-700'
+                    : 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent';
+            });
+            updateUIForActiveKey();
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderGroupTabs();
+            switchGroup('grpBio');
+            switchMainPanel('slides');
+        });
+
+        // --- Switch Main Category Tab (zoneA or zoneB) ---
+        function switchCategory(catKey) {
+            const subtabsEl = document.getElementById('zoneA-subtabs');
+            
+            if (catKey === 'zoneA') {
+                subtabsEl.classList.remove('hidden');
+                // Default to subA1 when clicking 值班人員考區
+                switchSubCategory('subA1');
+            } else {
+                subtabsEl.classList.add('hidden');
+                currentCatKey = 'zoneB';
+                
+                // Update Main Tab Buttons
+                document.getElementById('tab-zoneA').className = 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent';
+                document.getElementById('tab-zoneB').className = 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-md flex items-center justify-center gap-1.5 border border-teal-700';
+
+                updateUIForActiveKey();
+            }
+        }
+
+        // --- Switch Sub-Category Tab for Zone A ---
+        function switchSubCategory(subKey) {
+            currentCatKey = subKey;
+
+            // Update Main Tab Buttons
+            document.getElementById('tab-zoneA').className = 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-md flex items-center justify-center gap-1.5 border border-teal-700';
+            document.getElementById('tab-zoneB').className = 'tab-btn flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-1.5 border border-transparent';
+
+            // Update Sub-Tab Buttons
+            ['subA1', 'subA2', 'subA3'].forEach(key => {
+                const btn = document.getElementById(`tab-${key}`);
+                if (key === subKey) {
+                    btn.className = 'sub-tab-btn flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all bg-teal-600 text-white shadow-sm flex items-center justify-center gap-1.5';
+                } else {
+                    btn.className = 'sub-tab-btn flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-600 hover:bg-white flex items-center justify-center gap-1.5';
+                }
+            });
+
+            updateUIForActiveKey();
+        }
+
+        function updateUIForActiveKey() {
+            const catData = allQuizData[currentCatKey];
+            document.getElementById('current-quiz-title').innerHTML = `<span class="text-teal-600">📝</span> ${catData.title}`;
+            document.getElementById('current-quiz-desc').innerText = catData.desc;
+
+            if (isSubmittedMap[currentCatKey]) {
+                document.getElementById('result-dashboard').classList.remove('hidden');
+            } else {
+                document.getElementById('result-dashboard').classList.add('hidden');
+            }
+
+            renderQuickJumpGrid();
+            renderQuestions();
+            updateProgressStats();
+        }
+
+        // --- Render Quick Jump Navigation Buttons ---
+        function renderQuickJumpGrid() {
+            const container = document.getElementById('quick-jump-grid');
+            container.innerHTML = '';
+            const questions = allQuizData[currentCatKey].questions;
+
+            questions.forEach((_, index) => {
+                const btn = document.createElement('button');
+                btn.id = `jump-btn-${index}`;
+                btn.onclick = () => scrollToQuestion(index);
+                btn.className = 'w-8 h-8 rounded-lg text-xs font-bold border transition-all flex items-center justify-center bg-white border-slate-300 text-slate-700 hover:bg-slate-100';
+                btn.innerText = index + 1;
+                container.appendChild(btn);
+            });
+        }
+
+        function updateQuickJumpButtons() {
+            const userAnswers = userAnswersMap[currentCatKey];
+            const flaggedQuestions = flaggedQuestionsMap[currentCatKey];
+            const questions = allQuizData[currentCatKey].questions;
+
+            questions.forEach((_, index) => {
+                const btn = document.getElementById(`jump-btn-${index}`);
+                if (!btn) return;
+
+                const isAnswered = userAnswers[index] !== null;
+                const isFlagged = flaggedQuestions[index];
+
+                if (isFlagged) {
+                    btn.className = 'w-8 h-8 rounded-lg text-xs font-bold border transition-all flex items-center justify-center bg-amber-500 text-white border-amber-600 shadow-sm';
+                } else if (isAnswered) {
+                    btn.className = 'w-8 h-8 rounded-lg text-xs font-bold border transition-all flex items-center justify-center bg-teal-600 text-white border-teal-700 shadow-sm';
+                } else {
+                    btn.className = 'w-8 h-8 rounded-lg text-xs font-bold border transition-all flex items-center justify-center bg-white border-slate-300 text-slate-700 hover:bg-slate-100';
+                }
+            });
+        }
+
+        // --- Render All Questions for Active Category ---
+        function renderQuestions() {
+            const container = document.getElementById('quiz-questions-list');
+            container.innerHTML = '';
+
+            const quizList = allQuizData[currentCatKey].questions;
+            const userAnswers = userAnswersMap[currentCatKey];
+            const flaggedQuestions = flaggedQuestionsMap[currentCatKey];
+            const isSubmitted = isSubmittedMap[currentCatKey];
+
+            quizList.forEach((q, qIndex) => {
+                const card = document.createElement('div');
+                card.id = `question-card-${qIndex}`;
+                
+                if (isSubmitted) {
+                    const userChoice = userAnswers[qIndex];
+                    if (userChoice === q.correct) {
+                        card.className = 'bg-green-50/30 p-5 sm:p-6 rounded-2xl border-2 border-green-400 shadow-sm space-y-4 scroll-mt-24';
+                    } else {
+                        card.className = 'bg-red-50/30 p-5 sm:p-6 rounded-2xl border-2 border-red-300 shadow-sm space-y-4 scroll-mt-24';
+                    }
+                } else {
+                    card.className = 'bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 scroll-mt-24 transition-all';
+                }
+
+                let optionsHTML = '';
+                q.options.forEach((opt, optIndex) => {
+                    const isChecked = userAnswers[qIndex] === optIndex ? 'checked' : '';
+                    const disabledAttr = isSubmitted ? 'disabled' : '';
+                    
+                    let extraClass = 'hover:bg-slate-50 cursor-pointer';
+                    if (isSubmitted) {
+                        if (optIndex === q.correct) {
+                            extraClass = 'border-2 border-green-500 bg-green-100/60 font-bold text-green-950';
+                        } else if (optIndex === userAnswers[qIndex] && userAnswers[qIndex] !== q.correct) {
+                            extraClass = 'border-2 border-red-400 bg-red-100/60 text-red-950 font-semibold';
+                        } else {
+                            extraClass = 'opacity-60 bg-slate-50';
+                        }
+                    }
+
+                    optionsHTML += `
+                        <label class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 ${extraClass} transition-colors">
+                            <input type="radio" name="question-${qIndex}" value="${optIndex}" ${isChecked} ${disabledAttr} onchange="selectOption(${qIndex}, ${optIndex})" class="mt-1 text-teal-600 focus:ring-teal-500">
+                            <span class="text-sm font-medium text-slate-700 leading-snug">${opt}</span>
+                        </label>
+                    `;
+                });
+
+                let expHTML = '';
+                if (isSubmitted) {
+                    expHTML = `
+                        <div class="p-4 rounded-xl text-sm bg-slate-50 border border-slate-200 mt-4 space-y-1">
+                            <div class="font-bold text-teal-800 flex items-center gap-1.5">
+                                <span>💡</span> SOP 實務解題邏輯與標準：
+                            </div>
+                            <div class="text-slate-600 leading-relaxed text-xs sm:text-sm">
+                                ${q.explanation}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="flex flex-wrap justify-between items-start gap-2 border-b border-slate-100 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-teal-100 text-teal-800">${q.category}</span>
+                            <span class="text-xs font-semibold text-slate-400">配分 10 分</span>
+                        </div>
+                        <button onclick="toggleFlag(${qIndex})" id="flag-btn-${qIndex}" class="text-xs font-medium px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors flex items-center gap-1">
+                            <span>${flaggedQuestions[qIndex] ? '🚩' : '🏳️'}</span>
+                            <span>${flaggedQuestions[qIndex] ? '取消標記' : '標記此題'}</span>
+                        </button>
+                    </div>
+
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                        ${q.question}
+                    </h3>
+
+                    <div class="space-y-2.5">
+                        ${optionsHTML}
+                    </div>
+
+                    ${expHTML}
+                `;
+
+                container.appendChild(card);
+            });
+
+            const submitBtn = document.getElementById('submit-btn');
+            if (isSubmitted) {
+                submitBtn.disabled = true;
+                submitBtn.className = 'w-full sm:w-auto bg-slate-400 text-white font-bold px-8 py-3 rounded-xl shadow cursor-not-allowed text-base flex items-center justify-center gap-2';
+                submitBtn.innerHTML = '<span>🔒</span> 本分頁考卷已繳交（如需重測請點擊上方重測按鈕）';
+            } else {
+                submitBtn.disabled = false;
+                submitBtn.className = 'w-full sm:w-auto bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition-all text-base flex items-center justify-center gap-2';
+                submitBtn.innerHTML = '<span>📋</span> 提交試卷結算成績';
+            }
+
+            updateQuickJumpButtons();
+        }
+
+        function selectOption(qIndex, optIndex) {
+            if (isSubmittedMap[currentCatKey]) return;
+            userAnswersMap[currentCatKey][qIndex] = optIndex;
+            updateProgressStats();
+            updateQuickJumpButtons();
+        }
+
+        function toggleFlag(qIndex) {
+            if (isSubmittedMap[currentCatKey]) return;
+            flaggedQuestionsMap[currentCatKey][qIndex] = !flaggedQuestionsMap[currentCatKey][qIndex];
+            const flagBtn = document.getElementById(`flag-btn-${qIndex}`);
+            const isFlagged = flaggedQuestionsMap[currentCatKey][qIndex];
+            if (flagBtn) {
+                flagBtn.innerHTML = `<span>${isFlagged ? '🚩' : '🏳️'}</span><span>${isFlagged ? '取消標記' : '標記此題'}</span>`;
+            }
+            updateProgressStats();
+            updateQuickJumpButtons();
+        }
+
+        function updateProgressStats() {
+            const userAnswers = userAnswersMap[currentCatKey];
+            const flaggedQuestions = flaggedQuestionsMap[currentCatKey];
+            const quizList = allQuizData[currentCatKey].questions;
+
+            const answeredCount = userAnswers.filter(a => a !== null).length;
+            const flaggedCount = flaggedQuestions.filter(f => f).length;
+
+            document.getElementById('stat-progress').innerText = `${answeredCount} / ${quizList.length}`;
+            document.getElementById('stat-flagged').innerText = `${flaggedCount} 題`;
+
+            const statusText = document.getElementById('bottom-status-text');
+            if (isSubmittedMap[currentCatKey]) {
+                statusText.innerHTML = `<span class="text-indigo-600 font-bold">🔒 本分頁考核已完成鎖定。</span> 若需重新填答請點擊上方「🔄 重測當前考卷」。`;
+            } else if (answeredCount === quizList.length) {
+                statusText.innerHTML = `<span class="text-green-600 font-bold">✓ 本分頁所有題目已答完！</span> 請點擊右側按鈕提交試卷。`;
+            } else {
+                statusText.innerText = `目前已完成 ${answeredCount} / ${quizList.length} 題，剩餘 ${quizList.length - answeredCount} 題未作答。`;
+            }
+        }
+
+        function scrollToQuestion(index) {
+            const element = document.getElementById(`question-card-${index}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function scrollToReview() {
+            scrollToQuestion(0);
+        }
+
+        // --- Submit Quiz & Calculate Final Results ---
+        async function submitQuiz() {
+            if (isSubmittedMap[currentCatKey]) {
+                alert('本分頁考卷已經提交過，無法重複更改答案！若需重測請點擊「重測當前考卷」。');
+                return;
+            }
+
+            const nameInput = document.getElementById('examinee-name').value.trim();
+            const idInput = document.getElementById('examinee-id').value.trim();
+            const roleInput = document.getElementById('examinee-role').value;
+            const evaluatorNameInput = FIXED_EVALUATOR_NAME;
+            const evaluatorTitleInput = FIXED_EVALUATOR_TITLE;
+
+            if (!nameInput || !idInput || !roleInput) {
+                alert('請先於上方完整填寫「考核者姓名」「員工工號」「受測者身份」再提交考卷！');
+                document.getElementById('examinee-name').focus();
+                return;
+            }
+
+            const quizList = allQuizData[currentCatKey].questions;
+            const userAnswers = userAnswersMap[currentCatKey];
+
+            const unanswered = userAnswers.filter(a => a === null).length;
+            if (unanswered > 0) {
+                const confirmSubmit = confirm(`尚有 ${unanswered} 題未作答，確定要直接提交本份試卷嗎？`);
+                if (!confirmSubmit) return;
+            }
+
+            let correctCount = 0;
+            let wrongCount = 0;
+            const categoryStats = {};
+            const userAnswersDetail = [];
+
+            quizList.forEach((q, qIndex) => {
+                const userChoice = userAnswers[qIndex];
+                const isCorrect = userChoice === q.correct;
+
+                const optionLetters = ['A', 'B', 'C', 'D'];
+                const selectedLetter = userChoice !== null ? optionLetters[userChoice] : '未答';
+                userAnswersDetail.push({
+                    num: qIndex + 1,
+                    questionText: q.question,
+                    userAnswer: selectedLetter,
+                    isCorrect: isCorrect
+                });
+
+                if (!categoryStats[q.category]) {
+                    categoryStats[q.category] = { total: 0, correct: 0 };
+                }
+                categoryStats[q.category].total += 1;
+
+                if (isCorrect) {
+                    correctCount++;
+                    categoryStats[q.category].correct += 1;
+                } else {
+                    wrongCount++;
+                }
+            });
+
+            const totalScore = quizList.length > 0 ? Math.round((correctCount / quizList.length) * 100) : 0;
+
+            const record = {
+                id: Date.now(),
+                timestamp: new Date().toLocaleString(),
+                name: nameInput,
+                empId: idInput,
+                role: roleInput,
+                evaluatorName: evaluatorNameInput,
+                evaluatorTitle: evaluatorTitleInput,
+                quizTitle: allQuizData[currentCatKey].title,
+                groupKey: currentGroupKey,
+                score: totalScore,
+                status: totalScore >= 80 ? '合格' : '未達標',
+                answersDetail: userAnswersDetail
+            };
+            try {
+                await saveRecordToServer(record);
+            } catch (error) {
+                console.error(error);
+                alert(`成績儲存失敗：${error.message}\n\n本次考卷尚未鎖定，請確認網路或伺服器後再提交。`);
+                return;
+            }
+
+            isSubmittedMap[currentCatKey] = true;
+            renderQuestions();
+
+            document.getElementById('result-user-info').innerText = `考核者：${nameInput} (工號：${idInput})`;
+            document.getElementById('final-score-text').innerText = totalScore;
+            document.getElementById('res-correct-count').innerText = `${correctCount} 題`;
+            document.getElementById('res-wrong-count').innerText = `${wrongCount} 題`;
+
+            const badge = document.getElementById('result-badge');
+            const comment = document.getElementById('result-summary-comment');
+
+            if (totalScore >= 80) {
+                badge.className = 'inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-green-100 text-green-800';
+                badge.innerText = '考核結果：合格 (PASS)';
+                comment.innerText = '恭喜您通過本分頁生化教育訓練考核！成績與題目細項已自動儲存至後台系統。';
+            } else {
+                badge.className = 'inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-red-100 text-red-800';
+                badge.innerText = '考核結果：未達及格線 (NEEDS REVIEW)';
+                comment.innerText = '建議您點擊上方「投影片 × 考題對照手冊」複習相關教材，並檢視下方答錯題目之解析。';
+            }
+
+            const resultDashboard = document.getElementById('result-dashboard');
+            resultDashboard.classList.remove('hidden');
+            resultDashboard.scrollIntoView({ behavior: 'smooth' });
+
+            renderCategoryChart(categoryStats);
+            updateProgressStats();
+        }
+
+        async function saveRecordToServer(record) {
+            const res = await fetch('/api/records', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(record)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || '成績儲存失敗');
+            return data;
+        }
+
+        async function getAdminKey() {
+            if (adminKey) return adminKey;
+            const key = prompt('請輸入成績後台管理者金鑰（ADMIN_KEY）：');
+            if (!key) return null;
+            adminKey = key.trim();
+            sessionStorage.setItem('admin_key', adminKey);
+            return adminKey;
+        }
+
+        async function fetchAdminMaterials() {
+            const key = await getAdminKey();
+            if (!key) return null;
+            const res = await fetch('/api/slides/admin', { headers: { 'X-Admin-Key': key } });
+            if (res.status === 401) {
+                sessionStorage.removeItem('admin_key'); adminKey = '';
+                alert('管理者金鑰錯誤或尚未設定，請重新輸入。');
+                return null;
+            }
+            const data = await res.json().catch(() => []);
+            if (!res.ok) throw new Error(data.error || '無法取得教材清單');
+            return Array.isArray(data) ? data : [];
+        }
+
+        async function renderAdminMaterials() {
+            const box = document.getElementById('admin-materials-list');
+            if (!box) return;
+            box.innerHTML = '<p class="text-xs text-slate-400">讀取教材中…</p>';
+            try {
+                const materials = await fetchAdminMaterials();
+                if (!materials) return;
+                box.innerHTML = materials.map(m => `
+                    <div class="border border-slate-200 rounded-xl p-3 ${m.isBuiltin ? 'bg-slate-50' : 'bg-white'}">
+                        <div class="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-bold text-sm text-slate-800 break-all">${escapeHtml(m.title || m.filename)}</span>
+                                    <span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">${escapeHtml((GROUPS[m.group] || GROUPS.grpBio).label)}</span>
+                                    <span class="text-[11px] px-2 py-0.5 rounded-full ${m.isBuiltin ? 'bg-slate-200 text-slate-600' : 'bg-indigo-100 text-indigo-700'}">${m.isBuiltin ? '內建' : '上傳'}</span>
+                                    ${!m.isBuiltin && !m.active ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">已停用</span>' : ''}
+                                </div>
+                                <div class="text-xs text-slate-500 mt-1">${escapeHtml(m.categoryLabel || '未分類')} · ${m.pageCount || 0} 頁 · ${escapeHtml(m.dateAdded || '')}</div>
+                            </div>
+                            ${m.isBuiltin ? '<span class="text-xs text-slate-400">內建教材不可修改</span>' : `
+                                <div class="flex flex-wrap gap-2 shrink-0">
+                                    <button onclick="editAdminMaterial('${m.id}')" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg">✏️ 編輯</button>
+                                    <button onclick="toggleAdminMaterial('${m.id}', ${m.active ? 'false' : 'true'})" class="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg">${m.active ? '⏸️ 停用' : '▶️ 啟用'}</button>
+                                    <button onclick="deleteAdminMaterial('${m.id}')" class="text-xs bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg">🗑️ 刪除</button>
+                                </div>`}
+                        </div>
+                    </div>`).join('') || '<p class="text-xs text-slate-400">目前沒有教材。</p>';
+            } catch (err) { box.innerHTML = `<p class="text-xs text-rose-500">❌ ${escapeHtml(err.message)}</p>`; }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+        }
+
+        // ==================================================================
+        // 管理者後台：組別選單、教材分類選單、考題頁籤與題庫管理
+        // ==================================================================
+        function populateAdminGroupSelects() {
+            const opts = Object.entries(GROUPS).map(([k, g]) => `<option value="${k}">${escapeHtml(g.label)}</option>`).join('');
+            const matSel = document.getElementById('admin-material-group');
+            const quizSel = document.getElementById('admin-quiz-group');
+            if (matSel) matSel.innerHTML = opts;
+            if (quizSel) quizSel.innerHTML = opts;
+        }
+
+        function onAdminMaterialGroupChange() {
+            refreshAdminMaterialCategoryOptions();
+        }
+
+        async function refreshAdminMaterialCategoryOptions() {
+            const group = document.getElementById('admin-material-group').value;
+            const sel = document.getElementById('admin-material-category');
+            if (!sel) return;
+            if (group === 'grpBio') {
+                sel.innerHTML = `
+                    <option value="">未分類 / 一般補充教材</option>
+                    <option value="subA1">1-1 一致性與法定傳染病通報</option>
+                    <option value="subA2">1-2 c503一般作業流程與異常訊號故障排除</option>
+                    <option value="subA3">1-3 Cobas b 211異常訊號故障排除與QC設定</option>
+                    <option value="zoneB">2 COVER C1人員考區（Sebia）</option>`;
+                return;
+            }
+            sel.innerHTML = `<option value="">未分類 / 一般補充教材</option>`;
+            try {
+                const res = await fetch(`/api/quiz-categories?group=${group}`);
+                const cats = await res.json();
+                sel.innerHTML += cats.map(c => `<option value="${c.id}">${escapeHtml(c.title)}</option>`).join('');
+            } catch (err) { /* 靜默失敗，保留「未分類」選項即可 */ }
+        }
+
+        function onAdminQuizGroupChange() {
+            renderAdminQuizCategories();
+        }
+
+        async function renderAdminQuizCategories() {
+            const box = document.getElementById('admin-quiz-categories-list');
+            const group = document.getElementById('admin-quiz-group').value;
+            if (!box || !group) return;
+            if (group === 'grpBio') {
+                box.innerHTML = '<p class="text-xs text-slate-500 py-2">生化組沿用原有固定頁籤與題庫（一致性通報 / c503 / Cobas b 211 / COVER C1），此處不提供編輯。</p>';
+                return;
+            }
+            box.innerHTML = '<p class="text-xs text-slate-400">讀取考題頁籤中…</p>';
+            const key = await getAdminKey();
+            if (!key) return;
+            try {
+                const res = await fetch(`/api/quiz-categories/admin?group=${group}`, { headers: { 'X-Admin-Key': key } });
+                const cats = await res.json();
+                if (!res.ok) throw new Error((cats && cats.error) || '讀取失敗');
+                if (!cats.length) {
+                    box.innerHTML = '<p class="text-xs text-slate-500 py-2">本組別尚未建立任何考題頁籤，請於上方輸入頁籤名稱後點擊「➕ 新增」。</p>';
+                    return;
+                }
+                box.innerHTML = cats.map(quizCategoryCardHTML).join('');
+                cats.forEach(c => loadQuizQuestionCountOnly(c.id));
+            } catch (err) {
+                box.innerHTML = `<p class="text-xs text-rose-500">❌ ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function quizCategoryCardHTML(c) {
+            return `
+                <div class="border border-indigo-200 rounded-xl p-3 bg-white">
+                    <div class="flex items-start justify-between gap-2 flex-wrap">
+                        <div class="min-w-0">
+                            <span class="font-bold text-sm text-slate-800 break-all">${escapeHtml(c.title)}</span>
+                            ${!c.active ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ml-1">已停用</span>' : ''}
+                            <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.desc || '')}</div>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button onclick="toggleQuizQuestionsPanel('${c.id}')" class="text-xs bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg">📋 題目（<span id="qcount-${c.id}">…</span>）</button>
+                            <button onclick="adminEditQuizCategory('${c.id}')" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg">✏️ 編輯</button>
+                            <button onclick="adminDeleteQuizCategory('${c.id}')" class="text-xs bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1.5 rounded-lg">🗑️ 刪除</button>
+                        </div>
+                    </div>
+                    <div id="qpanel-${c.id}" class="hidden mt-3 border-t border-slate-100 pt-3 space-y-2">
+                        <div id="qlist-${c.id}" class="space-y-1.5"></div>
+                        <div class="bg-slate-50 rounded-lg p-2.5 space-y-1.5">
+                            <p class="text-xs font-semibold text-slate-600">➕ 新增題目</p>
+                            <input id="qform-${c.id}-question" type="text" placeholder="題目內容" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                <input id="qform-${c.id}-opt0" type="text" placeholder="選項 A" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                                <input id="qform-${c.id}-opt1" type="text" placeholder="選項 B" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                                <input id="qform-${c.id}-opt2" type="text" placeholder="選項 C" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                                <input id="qform-${c.id}-opt3" type="text" placeholder="選項 D" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                            <div class="flex flex-wrap gap-2 items-center">
+                                <label class="text-xs text-slate-500">正確答案：</label>
+                                <select id="qform-${c.id}-correct" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+                                    <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
+                                </select>
+                                <input id="qform-${c.id}-tag" type="text" placeholder="題目分類標籤（選填，例如：故障排除）" class="flex-1 min-w-[140px] px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            </div>
+                            <textarea id="qform-${c.id}-explain" rows="2" placeholder="詳解（選填，作答後顯示）" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs"></textarea>
+                            <button onclick="adminAddQuizQuestion('${c.id}')" class="text-xs bg-teal-700 hover:bg-teal-600 text-white px-3 py-1.5 rounded-lg font-semibold">新增此題</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        async function loadQuizQuestionCountOnly(catId) {
+            try {
+                const res = await fetch(`/api/quiz-questions?category=${catId}`);
+                const qs = await res.json();
+                const el = document.getElementById(`qcount-${catId}`);
+                if (el) el.textContent = qs.length;
+            } catch (err) { /* 忽略 */ }
+        }
+
+        async function toggleQuizQuestionsPanel(catId) {
+            const panel = document.getElementById(`qpanel-${catId}`);
+            if (!panel) return;
+            const wasHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden');
+            if (wasHidden) await loadQuizQuestionsIntoPanel(catId);
+        }
+
+        async function loadQuizQuestionsIntoPanel(catId) {
+            const listBox = document.getElementById(`qlist-${catId}`);
+            const countEl = document.getElementById(`qcount-${catId}`);
+            if (!listBox) return;
+            listBox.innerHTML = '<p class="text-xs text-slate-400">載入中…</p>';
+            try {
+                const res = await fetch(`/api/quiz-questions?category=${catId}`);
+                const qs = await res.json();
+                if (countEl) countEl.textContent = qs.length;
+                listBox.innerHTML = qs.length ? qs.map((q, i) => `
+                    <div class="flex items-start justify-between gap-2 border border-slate-100 rounded-lg p-2 bg-white">
+                        <div class="min-w-0 flex-1 text-xs">
+                            <span class="font-semibold text-slate-700">${i + 1}. ${escapeHtml(q.question)}</span>
+                            <div class="text-slate-500 mt-0.5">正解：${escapeHtml((q.options || [])[q.correct] ?? '')}${q.tag ? ' · 標籤：' + escapeHtml(q.tag) : ''}</div>
+                        </div>
+                        <div class="flex gap-1.5 shrink-0">
+                            <button onclick="adminEditQuizQuestion('${q.id}','${catId}')" class="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded">✏️</button>
+                            <button onclick="adminDeleteQuizQuestion('${q.id}','${catId}')" class="text-[11px] bg-rose-600 hover:bg-rose-500 text-white px-2 py-1 rounded">🗑️</button>
+                        </div>
+                    </div>`).join('') : '<p class="text-xs text-slate-400">目前尚無題目。</p>';
+            } catch (err) {
+                listBox.innerHTML = `<p class="text-xs text-rose-500">❌ ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        async function adminCreateQuizCategory() {
+            const key = await getAdminKey();
+            if (!key) return;
+            const group = document.getElementById('admin-quiz-group').value;
+            if (group === 'grpBio') { alert('生化組沿用固定頁籤，無法在此新增。'); return; }
+            const titleInput = document.getElementById('admin-new-category-title');
+            const title = titleInput.value.trim();
+            if (!title) { alert('請輸入頁籤名稱'); return; }
+            const res = await fetch('/api/quiz-categories', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ group, title }) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '新增失敗'); return; }
+            titleInput.value = '';
+            delete dynamicCategoriesCache[group];
+            await renderAdminQuizCategories();
+            if (document.getElementById('admin-material-group').value === group) await refreshAdminMaterialCategoryOptions();
+        }
+
+        async function adminEditQuizCategory(catId) {
+            const key = await getAdminKey();
+            if (!key) return;
+            const group = document.getElementById('admin-quiz-group').value;
+            const res0 = await fetch(`/api/quiz-categories/admin?group=${group}`, { headers: { 'X-Admin-Key': key } });
+            const cats = await res0.json().catch(() => []);
+            const c = (cats || []).find(x => x.id === catId);
+            if (!c) return;
+            const title = prompt('頁籤名稱：', c.title || '');
+            if (title === null) return;
+            const desc = prompt('頁籤說明（選填）：', c.desc || '');
+            if (desc === null) return;
+            const active = confirm('是否啟用此頁籤讓學員可以看到？\n（確定＝啟用／取消＝停用）');
+            const res = await fetch(`/api/quiz-categories/${catId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ title, desc, active }) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '修改失敗'); return; }
+            delete dynamicCategoriesCache[group];
+            await renderAdminQuizCategories();
+            if (document.getElementById('admin-material-group').value === group) await refreshAdminMaterialCategoryOptions();
+        }
+
+        async function adminDeleteQuizCategory(catId) {
+            if (!confirm('確定刪除此考題頁籤？頁籤內所有題目也會一併刪除，此操作無法復原。')) return;
+            const key = await getAdminKey();
+            if (!key) return;
+            const group = document.getElementById('admin-quiz-group').value;
+            const res = await fetch(`/api/quiz-categories/${catId}`, { method: 'DELETE', headers: { 'X-Admin-Key': key } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '刪除失敗'); return; }
+            delete dynamicCategoriesCache[group];
+            delete allQuizData[catId];
+            await renderAdminQuizCategories();
+            await refreshAdminMaterialCategoryOptions();
+        }
+
+        async function adminAddQuizQuestion(catId) {
+            const key = await getAdminKey();
+            if (!key) return;
+            const question = document.getElementById(`qform-${catId}-question`).value.trim();
+            const options = [0, 1, 2, 3].map(i => document.getElementById(`qform-${catId}-opt${i}`).value.trim()).filter(Boolean);
+            const correct = parseInt(document.getElementById(`qform-${catId}-correct`).value, 10) || 0;
+            const tag = document.getElementById(`qform-${catId}-tag`).value.trim();
+            const explanation = document.getElementById(`qform-${catId}-explain`).value.trim();
+            if (!question || options.length < 2) { alert('請輸入題目內容，並至少填寫 2 個選項。'); return; }
+            const res = await fetch('/api/quiz-questions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ quizCategoryId: catId, question, options, correct, tag, explanation }) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '新增失敗'); return; }
+            ['question', 'opt0', 'opt1', 'opt2', 'opt3', 'tag', 'explain'].forEach(f => { const el = document.getElementById(`qform-${catId}-${f}`); if (el) el.value = ''; });
+            await loadQuizQuestionsIntoPanel(catId);
+            delete allQuizData[catId]; // 讓考試區下次切換到此頁籤時重新抓取最新題目
+        }
+
+        async function adminEditQuizQuestion(qId, catId) {
+            const key = await getAdminKey();
+            if (!key) return;
+            const res0 = await fetch(`/api/quiz-questions?category=${catId}`);
+            const qs = await res0.json().catch(() => []);
+            const q = (qs || []).find(x => x.id === qId);
+            if (!q) return;
+            const question = prompt('題目內容：', q.question || '');
+            if (question === null) return;
+            const opts = [];
+            const optCount = Math.max(4, (q.options || []).length);
+            for (let i = 0; i < optCount; i++) {
+                const v = prompt(`選項 ${String.fromCharCode(65 + i)}（留白代表不使用此選項）：`, (q.options || [])[i] || '');
+                if (v === null) return;
+                if (v.trim()) opts.push(v.trim());
+            }
+            if (opts.length < 2) { alert('至少需要 2 個選項'); return; }
+            const correctStr = prompt(`正確答案是第幾個選項？（輸入 1 ~ ${opts.length}）`, String((q.correct || 0) + 1));
+            if (correctStr === null) return;
+            const correct = Math.max(0, Math.min(opts.length - 1, (parseInt(correctStr, 10) || 1) - 1));
+            const tag = prompt('題目分類標籤：', q.tag || '');
+            if (tag === null) return;
+            const explanation = prompt('詳解：', q.explanation || '');
+            if (explanation === null) return;
+            const res = await fetch(`/api/quiz-questions/${qId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ question, options: opts, correct, tag, explanation }) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '修改失敗'); return; }
+            await loadQuizQuestionsIntoPanel(catId);
+            delete allQuizData[catId];
+        }
+
+        async function adminDeleteQuizQuestion(qId, catId) {
+            if (!confirm('確定刪除此題目？此操作無法復原。')) return;
+            const key = await getAdminKey();
+            if (!key) return;
+            const res = await fetch(`/api/quiz-questions/${qId}`, { method: 'DELETE', headers: { 'X-Admin-Key': key } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '刪除失敗'); return; }
+            await loadQuizQuestionsIntoPanel(catId);
+            delete allQuizData[catId];
+        }
+
+        async function adminUploadMaterials() {
+            const input = document.getElementById('admin-pptx-upload-input');
+            const files = Array.from(input?.files || []);
+            if (!files.length) { alert('請先選擇 PPT / PPTX 檔案。'); return; }
+            const key = await getAdminKey();
+            if (!key) return;
+            const title = document.getElementById('admin-material-title').value.trim();
+            const desc = document.getElementById('admin-material-desc').value.trim();
+            const group = document.getElementById('admin-material-group').value;
+            const category = document.getElementById('admin-material-category').value;
+            const status = document.getElementById('admin-upload-status');
+            const btn = document.getElementById('admin-upload-btn');
+            btn.disabled = true;
+            let ok = 0;
+            for (const file of files) {
+                status.textContent = `⏳ 正在處理「${file.name}」…`;
+                const fd = new FormData();
+                fd.append('file', file); fd.append('title', title); fd.append('desc', desc); fd.append('category', category); fd.append('group', group);
+                try {
+                    const res = await fetch('/api/slides/upload', { method: 'POST', headers: { 'X-Admin-Key': key }, body: fd });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.status === 401) throw new Error('管理者金鑰錯誤');
+                    if (!res.ok) throw new Error(data.error || '上傳失敗');
+                    ok++;
+                } catch (err) { status.textContent = `❌ ${file.name}：${err.message}`; }
+            }
+            status.textContent = `✅ 完成 ${ok} / ${files.length} 份教材。`;
+            input.value = '';
+            document.getElementById('admin-material-title').value = '';
+            document.getElementById('admin-material-desc').value = '';
+            btn.disabled = false;
+            await renderAdminMaterials();
+            await renderSlidesGrid();
+        }
+
+        async function editAdminMaterial(id) {
+            const materials = await fetchAdminMaterials();
+            const m = materials?.find(x => x.id === id);
+            if (!m) return;
+            const title = prompt('教材名稱：', m.title || '');
+            if (title === null) return;
+            const desc = prompt('教材說明：', m.desc || '');
+            if (desc === null) return;
+            const groupOptions = Object.entries(GROUPS).map(([k, g]) => `${k}=${g.label}`).join('、');
+            const group = prompt(`所屬組別代碼（${groupOptions}）：`, m.group || 'grpBio');
+            if (group === null) return;
+            const category = prompt('對應考題頁籤代碼（生化組固定為 subA1/subA2/subA3/zoneB；其餘組別請填入該組已建立的頁籤代碼，可於「考題頁籤與題庫管理」查看；留白代表未分類）：', m.category || '');
+            if (category === null) return;
+            const key = await getAdminKey();
+            const res = await fetch(`/api/slides/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json','X-Admin-Key':key}, body: JSON.stringify({title, desc, category, group}) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '修改失敗'); return; }
+            await renderAdminMaterials(); await renderSlidesGrid();
+        }
+
+        async function toggleAdminMaterial(id, active) {
+            const key = await getAdminKey();
+            const res = await fetch(`/api/slides/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json','X-Admin-Key':key}, body:JSON.stringify({active}) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '更新失敗'); return; }
+            await renderAdminMaterials(); await renderSlidesGrid();
+        }
+
+        async function deleteAdminMaterial(id) {
+            if (!confirm('確定刪除這份教材嗎？教材檔案與轉換圖片都會刪除，此操作無法復原。')) return;
+            const key = await getAdminKey();
+            const res = await fetch(`/api/slides/${id}`, { method:'DELETE', headers:{'X-Admin-Key':key} });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '刪除失敗'); return; }
+            await renderAdminMaterials(); await renderSlidesGrid();
+        }
+
+        async function toggleAdminModal(show) {
+            const modal = document.getElementById('admin-modal');
+            if (show) {
+                const key = await getAdminKey();
+                if (!key) return;
+                populateAdminGroupSelects();
+                const matSel = document.getElementById('admin-material-group');
+                const quizSel = document.getElementById('admin-quiz-group');
+                if (matSel) matSel.value = currentGroupKey;
+                if (quizSel) quizSel.value = currentGroupKey;
+                await refreshAdminMaterialCategoryOptions();
+                await renderAdminQuizCategories();
+                await renderAdminMaterials();
+                await renderAdminTable();
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        async function fetchAdminRecords() {
+            const key = await getAdminKey();
+            if (!key) return null;
+            const res = await fetch('/api/records', { headers: { 'X-Admin-Key': key } });
+            if (res.status === 401) {
+                sessionStorage.removeItem('admin_key');
+                adminKey = '';
+                alert('管理者金鑰錯誤或尚未設定，請重新輸入。');
+                return null;
+            }
+            const data = await res.json().catch(() => []);
+            if (!res.ok) throw new Error(data.error || '無法取得成績');
+            adminRecords = Array.isArray(data) ? data : [];
+            return adminRecords;
+        }
+
+        async function renderAdminTable() {
+            const tbody = document.getElementById('admin-table-body');
+            tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">讀取伺服器成績中…</td></tr>`;
+            try {
+                const records = await fetchAdminRecords();
+                if (!records) return;
+                if (records.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">目前尚無任何考核紀錄</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = records.map((r, index) => `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-3 font-mono text-slate-500">${r.timestamp || ''}</td>
+                        <td class="p-3"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">${escapeHtml(r.groupLabel || '1 生化組')}</span></td>
+                        <td class="p-3 font-bold text-slate-800">${r.name || ''}</td>
+                        <td class="p-3 font-mono">${r.empId || ''}</td>
+                        <td class="p-3">${r.quizTitle || ''}</td>
+                        <td class="p-3 text-center font-bold ${Number(r.score) >= 80 ? 'text-green-600' : 'text-red-600'}">${Number(r.score) || 0}</td>
+                        <td class="p-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-bold ${r.status === '合格' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${r.status || ''}</span></td>
+                        <td class="p-3 text-center">
+                            <button onclick="exportRecordToWord(${index})" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-2.5 py-1 rounded transition-colors shadow-sm">📄 匯出 Word (附件1)</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-rose-500">❌ ${error.message}</td></tr>`;
+            }
+        }
+
+        // --- 附件1 匯出功能 (支援後台直接匯出或目前頁籤即時匯出) ---
+        let cachedTemplateBuffer = null;
+        let adminRecords = [];
+        let adminKey = sessionStorage.getItem('admin_key') || '';
+        let pendingExportRecordIndex = null;
+        let isExportingCurrentTab = false;
+
+        function buildRoleCheckboxText(role) {
+            const duty = role === '值班醫檢師' ? '☑' : '□';
+            const member = role === '生化組組員' ? '☑' : '□';
+            return `${duty}值班醫檢師 ${member}生化組組員`;
+        }
+
+        function buildEvaluatorTitleCheckboxText(title) {
+            const leader = title === '組長' ? '☑' : '□';
+            const assigned = title === '指派合格醫檢師' ? '☑' : '□';
+            return `${leader}組長 ${assigned}指派合格醫檢師`;
+        }
+
+        function exportCurrentTabToWord() {
+            const nameInput = document.getElementById('examinee-name').value.trim();
+            const idInput = document.getElementById('examinee-id').value.trim();
+            const roleInput = document.getElementById('examinee-role').value;
+
+            if (!nameInput || !idInput || !roleInput) {
+                alert('請先於上方填寫「考核者姓名」「員工工號」「受測者身份」再執行匯出！');
+                document.getElementById('examinee-name').focus();
+                return;
+            }
+
+            isExportingCurrentTab = true;
+            if (cachedTemplateBuffer) {
+                generateCurrentTabWord();
+            } else {
+                alert('請選擇範本檔案「附件1.docx」（僅需選擇一次，之後匯出會自動沿用）。');
+                document.getElementById('docx-template-input').click();
+            }
+        }
+
+        function generateCurrentTabWord() {
+            const nameInput = document.getElementById('examinee-name').value.trim();
+            const idInput = document.getElementById('examinee-id').value.trim();
+            const roleInput = document.getElementById('examinee-role').value;
+            const quizList = allQuizData[currentCatKey].questions;
+            const userAnswers = userAnswersMap[currentCatKey];
+
+            const optionLetters = ['A', 'B', 'C', 'D'];
+            const answersDetail = quizList.map((q, idx) => ({
+                num: idx + 1,
+                questionText: q.question,
+                userAnswer: userAnswers[idx] !== null ? optionLetters[userAnswers[idx]] : '未作答'
+            }));
+
+            try {
+                const zip = new PizZip(cachedTemplateBuffer);
+                const doc = new window.docxtemplater(zip, {
+                    paragraphLoop: true,
+                    linebreaks: true,
+                });
+
+                const correctCount = quizList.reduce((count, q, idx) => count + (userAnswers[idx] === q.correct ? 1 : 0), 0);
+                const evaluationScore = quizList.length > 0 ? Math.round((correctCount / quizList.length) * 100) : 0;
+                const evaluationStatus = evaluationScore >= 80 ? '合格' : '不合格';
+
+                doc.render({
+                    name: nameInput,
+                    empId: idInput,
+                    role: buildRoleCheckboxText(roleInput),
+                    evaluator: FIXED_EVALUATOR_NAME,
+                    evaluatorTitle: buildEvaluatorTitleCheckboxText(FIXED_EVALUATOR_TITLE),
+                    score: evaluationScore,
+                    evaluationScore: evaluationScore,
+                    passingScore: 80,
+                    correctCount: correctCount,
+                    wrongCount: quizList.length - correctCount,
+                    totalQuestions: quizList.length,
+                    status: evaluationStatus,
+                    result: evaluationStatus,
+                    questions: answersDetail
+                });
+
+                const blob = doc.getZip().generate({
+                    type: "blob",
+                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                });
+
+                saveAs(blob, `附件1.生化組年度人員能力考核表_${allQuizData[currentCatKey].title}_${nameInput}.docx`);
+            } catch (error) {
+                console.error(error);
+                alert(`匯出失敗：
+${error.message}
+
+請確認選擇的檔案是正確的「附件1.docx」範本。`);
+                cachedTemplateBuffer = null;
+            }
+        }
+
+        function exportRecordToWord(recordIndex) {
+            isExportingCurrentTab = false;
+            if (cachedTemplateBuffer) {
+                generateWordFromTemplate(recordIndex);
+            } else {
+                pendingExportRecordIndex = recordIndex;
+                alert('請選擇範本檔案「附件1.docx」（僅需選擇一次）。');
+                document.getElementById('docx-template-input').click();
+            }
+        }
+
+        function generateWordFromTemplate(recordIndex) {
+            const rec = adminRecords[recordIndex];
+            if (!rec) { alert('找不到這筆伺服器成績，請重新整理後台。'); return; }
+
+            try {
+                const zip = new PizZip(cachedTemplateBuffer);
+                const doc = new window.docxtemplater(zip, {
+                    paragraphLoop: true,
+                    linebreaks: true,
+                });
+
+                const recordScore = Number.isFinite(Number(rec.score)) ? Number(rec.score) : 0;
+                const recordStatus = recordScore >= 80 ? '合格' : '不合格';
+                const recordAnswers = Array.isArray(rec.answersDetail) ? rec.answersDetail : [];
+                const recordCorrect = recordAnswers.filter(a => a.userAnswer && a.userAnswer !== '未答' && a.isCorrect === true).length;
+
+                doc.render({
+                    name: rec.name,
+                    empId: rec.empId,
+                    role: buildRoleCheckboxText(rec.role),
+                    evaluator: rec.evaluatorName || FIXED_EVALUATOR_NAME,
+                    evaluatorTitle: buildEvaluatorTitleCheckboxText(rec.evaluatorTitle),
+                    score: recordScore,
+                    evaluationScore: recordScore,
+                    passingScore: 80,
+                    correctCount: recordCorrect,
+                    wrongCount: Math.max(recordAnswers.length - recordCorrect, 0),
+                    totalQuestions: recordAnswers.length,
+                    status: rec.status || recordStatus,
+                    result: rec.status || recordStatus,
+                    questions: record.answersDetail
+                });
+
+                const blob = doc.getZip().generate({
+                    type: "blob",
+                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                });
+
+                saveAs(blob, `附件1.生化組年度人員能力考核表_${rec.name}_${rec.empId}.docx`);
+            } catch (error) {
+                console.error(error);
+                alert(`匯出失敗：
+${error.message}`);
+                cachedTemplateBuffer = null;
+            }
+        }
+
+        document.getElementById('docx-template-input').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (evt) {
+                cachedTemplateBuffer = evt.target.result;
+                if (isExportingCurrentTab) {
+                    generateCurrentTabWord();
+                } else if (pendingExportRecordIndex !== null) {
+                    const idx = pendingExportRecordIndex;
+                    pendingExportRecordIndex = null;
+                    generateWordFromTemplate(idx);
+                }
+            };
+            reader.onerror = function () {
+                alert('讀取範本檔案失敗。');
+            };
+            reader.readAsArrayBuffer(file);
+            e.target.value = '';
+        });
+
+        async function exportToCSV() {
+            try {
+                const records = await fetchAdminRecords();
+                if (!records || records.length === 0) {
+                    alert('目前無可供匯出的紀錄！');
+                    return;
+                }
+                let csvContent = "\ufeff考核時間,組別,姓名,工號,考卷主題,得分,考核結果\n";
+                records.forEach(r => {
+                    csvContent += `"${r.timestamp || ''}","${r.groupLabel || '1 生化組'}","${r.name || ''}","${r.empId || ''}","${r.quizTitle || ''}",${Number(r.score) || 0},"${r.status || ''}"\n`;
+                });
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `生化組教育訓練考核成績表_${new Date().toISOString().slice(0,10)}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (error) {
+                alert(`匯出失敗：${error.message}`);
+            }
+        }
+
+        async function clearAllRecords() {
+            if (!confirm('確定要清空伺服器後台所有歷史考核成績紀錄嗎？此操作無法復原。')) return;
+            const key = await getAdminKey();
+            if (!key) return;
+            try {
+                const res = await fetch('/api/records', { method: 'DELETE', headers: { 'X-Admin-Key': key } });
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 401) { sessionStorage.removeItem('admin_key'); adminKey = ''; }
+                if (!res.ok) throw new Error(data.error || '清空失敗');
+                adminRecords = [];
+                await renderAdminTable();
+            } catch (error) {
+                alert(`清空失敗：${error.message}`);
+            }
+        }
+
+        function renderCategoryChart(categoryStats) {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const labels = Object.keys(categoryStats);
+            const userScores = labels.map(cat => categoryStats[cat].correct);
+            const maxScores = labels.map(cat => categoryStats[cat].total);
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '答對題數',
+                            data: userScores,
+                            backgroundColor: 'rgba(13, 148, 136, 0.85)',
+                            borderColor: '#0f766e',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '該項題數',
+                            data: maxScores,
+                            backgroundColor: 'rgba(226, 232, 240, 0.7)',
+                            borderColor: '#cbd5e1',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top' }
+                    }
+                }
+            });
+        }
+
+        function resetCurrentQuiz() {
+            if (confirm('確定要重置本分頁試卷並清空已選答案與解鎖填答限制嗎？')) {
+                isSubmittedMap[currentCatKey] = false;
+                const qCount = allQuizData[currentCatKey].questions.length;
+                userAnswersMap[currentCatKey] = new Array(qCount).fill(null);
+                flaggedQuestionsMap[currentCatKey] = new Array(qCount).fill(false);
+                document.getElementById('result-dashboard').classList.add('hidden');
+                renderQuestions();
+                updateProgressStats();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function toggleSopModal(show) {
+            const modal = document.getElementById('sop-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
