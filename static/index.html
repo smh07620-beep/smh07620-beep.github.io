@@ -192,7 +192,8 @@
 
         <!-- Quiz Exam Zone Selector Tabs：其餘組別專用（考題頁籤由後台管理者建立） -->
         <section id="dynamic-exam-tabs" class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm hidden">
-            <div id="dynamic-exam-tabs-list" class="flex flex-col sm:flex-row flex-wrap gap-2">
+            <div class="flex items-center gap-2 mb-3"><label class="text-xs font-semibold">每次抽題數</label><input id="quiz-question-count" type="number" min="1" max="100" value="10" class="border rounded px-2 py-1 w-20" onchange="window.quizQuestionCount=this.value"></div>
+                <div id="dynamic-exam-tabs-list" class="flex flex-col sm:flex-row flex-wrap gap-2">
                 <!-- Dynamically filled by renderDynamicExamTabs() -->
             </div>
             <p id="dynamic-exam-tabs-empty" class="text-xs text-slate-400 text-center py-3 hidden">
@@ -1009,13 +1010,16 @@
             if (allQuizData[catId]) return;
             const cats = dynamicCategoriesCache[currentGroupKey] || [];
             const catMeta = cats.find(c => c.id === catId);
-            const res = await fetch(`/api/quiz-questions?category=${catId}`);
+            const requestedCount = Number(window.quizQuestionCount || 10);
+            const res = await fetch(`/api/quiz-questions/random?category=${encodeURIComponent(catId)}&count=${requestedCount}`);
             const questions = await res.json();
             const normalized = renumberQuestions(questions.map(q => ({
                 id: q.id,
                 category: q.tag || '一般',
                 question: q.question,
-                options: q.options,
+                questionType: q.questionType || 'choice',
+                imageUrl: q.imageUrl || '',
+                options: q.options || [],
                 correct: q.correct,
                 explanation: q.explanation
             })));
