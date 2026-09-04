@@ -71,9 +71,25 @@ SOFFICE_BIN = os.environ.get("SOFFICE_PATH", "soffice")
 ALLOWED_EXT = {".pptx", ".ppt"}
 MAX_UPLOAD_MB = 80
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "change-me")
+# 預設管理者金鑰。正式站建議改由 Render Dashboard 環境變數 ADMIN_KEY 覆蓋，
+# 不要把正式使用的金鑰提交到公開的 GitHub Repository。
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "9544106")
 SQLITE_DB = DATA_DIR / "exam_records.db"
 
+# ---------------------------------------------------------------------------
+# 六大組別（頁面最上層分組）
+# ---------------------------------------------------------------------------
+GROUPS = {
+    "grpBio": "1 生化組",
+    "grpMicro": "2 鏡檢組",
+    "grpSero": "3 血清組",
+    "grpBB": "4 血庫組",
+    "grpBact": "5 細菌組",
+    "grpHema": "6 血液組",
+}
+DEFAULT_GROUP = "grpBio"
+
+# 生化組沿用原本既有的固定考題頁籤／教材分類代碼。
 CATEGORY_LABELS = {
     "subA1": "1-1 一致性與法定傳染病通報",
     "subA2": "1-2 c503一般作業流程與異常訊號故障排除",
@@ -106,6 +122,11 @@ def _db_conn():
         return conn, "postgres"
     conn = sqlite3.connect(str(SQLITE_DB), timeout=30)
     conn.row_factory = sqlite3.Row
+    # 與 Postgres 分支的 conn.autocommit = True 對齊：SQLite 預設每個
+    # INSERT/UPDATE/DELETE 需要顯式 commit() 才會真正寫入，若忘記 commit
+    # 又直接 close()，寫入會被靜默 rollback。isolation_level=None 讓每個
+    # SQL 陳述式即時自動提交，行為與 Postgres 分支一致。
+    conn.isolation_level = None
     return conn, "sqlite"
 
 
@@ -127,9 +148,14 @@ def init_exam_db():
                     status TEXT NOT NULL,
                     correct_count INTEGER NOT NULL DEFAULT 0,
                     wrong_count INTEGER NOT NULL DEFAULT 0,
-                    answers_detail JSONB NOT NULL
+                    answers_detail JSONB NOT NULL,
+                    group_key TEXT NOT NULL DEFAULT 'grpBio'
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE exam_records ADD COLUMN IF NOT EXISTS group_key TEXT NOT NULL DEFAULT 'grpBio'")
+            except Exception:
+                pass
         else:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS exam_records (
@@ -145,9 +171,13 @@ def init_exam_db():
                     status TEXT NOT NULL,
                     correct_count INTEGER NOT NULL DEFAULT 0,
                     wrong_count INTEGER NOT NULL DEFAULT 0,
-                    answers_detail TEXT NOT NULL
+                    answers_detail TEXT NOT NULL,
+                    group_key TEXT NOT NULL DEFAULT 'grpBio'
                 )
             """)
+            existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(exam_records)").fetchall()}
+            if "group_key" not in existing_cols:
+                conn.execute("ALTER TABLE exam_records ADD COLUMN group_key TEXT NOT NULL DEFAULT 'grpBio'")
     finally:
         conn.close()
 
@@ -165,14 +195,22 @@ def _record_to_dict(row):
     r["empId"] = r.pop("emp_id", "")
     r["evaluatorName"] = r.pop("evaluator_name", "")
     r["evaluatorTitle"] = r.pop("evaluator_title", "")
+    group = r.pop("group_key", "grpBio") or "grpBio"
+    r["groupKey"] = group
+    r["groupLabel"] = GROUPS.get(group, GROUPS["grpBio"])
     return r
 
 
 def require_admin():
     supplied = request.headers.get("X-Admin-Key", "")
-    if not ADMIN_KEY or ADMIN_KEY == "change-me" or supplied != ADMIN_KEY:
+    if not ADMIN_KEY or supplied != ADMIN_KEY:
         return jsonify({"error": "未授權。請提供正確的管理者金鑰 ADMIN_KEY。"}), 401
     return None
+
+
+def normalize_group(value):
+    """把不合法或空白的組別代碼收斂為預設的生化組，避免髒資料。"""
+    return value if value in GROUPS else DEFAULT_GROUP
 
 
 init_exam_db()
@@ -189,6 +227,7 @@ def init_materials_db():
                     title TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
                     category TEXT NOT NULL DEFAULT '',
+                    group_key TEXT NOT NULL DEFAULT 'grpBio',
                     folder TEXT NOT NULL,
                     page_count INTEGER NOT NULL DEFAULT 0,
                     date_added TEXT NOT NULL,
@@ -196,6 +235,10 @@ def init_materials_db():
                     active BOOLEAN NOT NULL DEFAULT TRUE
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE materials ADD COLUMN IF NOT EXISTS group_key TEXT NOT NULL DEFAULT 'grpBio'")
+            except Exception:
+                pass
         else:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS materials (
@@ -204,11 +247,73 @@ def init_materials_db():
                     title TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
                     category TEXT NOT NULL DEFAULT '',
+                    group_key TEXT NOT NULL DEFAULT 'grpBio',
                     folder TEXT NOT NULL,
                     page_count INTEGER NOT NULL DEFAULT 0,
                     date_added TEXT NOT NULL,
                     storage_filename TEXT NOT NULL,
                     active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(materials)").fetchall()}
+            if "group_key" not in existing_cols:
+                conn.execute("ALTER TABLE materials ADD COLUMN group_key TEXT NOT NULL DEFAULT 'grpBio'")
+    finally:
+        conn.close()
+
+
+def init_quiz_db():
+    """考題頁籤（quiz_categories）與題目（quiz_questions）：
+    生化組沿用前端內建的固定 4 個頁籤與題庫；其餘 5 組的考題頁籤與題目
+    則完全由後台管理者透過這兩張表新增/編輯/刪除。"""
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS quiz_categories (
+                    id TEXT PRIMARY KEY,
+                    group_key TEXT NOT NULL DEFAULT 'grpBio',
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    date_added TEXT NOT NULL,
+                    active BOOLEAN NOT NULL DEFAULT TRUE
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS quiz_questions (
+                    id TEXT PRIMARY KEY,
+                    quiz_category_id TEXT NOT NULL,
+                    tag TEXT NOT NULL DEFAULT '',
+                    question TEXT NOT NULL,
+                    options JSONB NOT NULL,
+                    correct INTEGER NOT NULL DEFAULT 0,
+                    explanation TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS quiz_categories (
+                    id TEXT PRIMARY KEY,
+                    group_key TEXT NOT NULL DEFAULT 'grpBio',
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    date_added TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS quiz_questions (
+                    id TEXT PRIMARY KEY,
+                    quiz_category_id TEXT NOT NULL,
+                    tag TEXT NOT NULL DEFAULT '',
+                    question TEXT NOT NULL,
+                    options TEXT NOT NULL,
+                    correct INTEGER NOT NULL DEFAULT 0,
+                    explanation TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0
                 )
             """)
     finally:
@@ -224,6 +329,7 @@ def material_row_to_dict(row):
     r["pageCount"] = int(r.pop("page_count", 0) or 0)
     r["storageFilename"] = r.pop("storage_filename", "")
     r["active"] = bool(r.get("active", True))
+    r["group"] = normalize_group(r.pop("group_key", DEFAULT_GROUP))
     return r
 
 
@@ -249,9 +355,103 @@ def get_material(material_id):
 
 
 init_materials_db()
+init_quiz_db()
 
 
 # ---------------------------------------------------------------------------
+# 考題頁籤 (quiz_categories) 與題目 (quiz_questions) 存取輔助函式
+# ---------------------------------------------------------------------------
+def quiz_category_row_to_dict(row):
+    r = dict(row)
+    r["desc"] = r.pop("description", "")
+    r["dateAdded"] = r.pop("date_added", "")
+    r["active"] = bool(r.get("active", True))
+    r["group"] = normalize_group(r.pop("group_key", DEFAULT_GROUP))
+    r["sortOrder"] = int(r.pop("sort_order", 0) or 0)
+    return r
+
+
+def quiz_question_row_to_dict(row):
+    r = dict(row)
+    raw_options = r.pop("options", "[]")
+    if isinstance(raw_options, str):
+        try:
+            raw_options = json.loads(raw_options)
+        except json.JSONDecodeError:
+            raw_options = []
+    r["options"] = raw_options
+    r["quizCategoryId"] = r.pop("quiz_category_id", "")
+    r["sortOrder"] = int(r.pop("sort_order", 0) or 0)
+    return r
+
+
+def list_quiz_categories(group_key=None, include_inactive=False):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        sql = "SELECT * FROM quiz_categories"
+        params = []
+        clauses = []
+        if group_key:
+            clauses.append(f"group_key = {ph}")
+            params.append(group_key)
+        if not include_inactive:
+            clauses.append("active = " + ("TRUE" if kind == "postgres" else "1"))
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY sort_order ASC, date_added ASC"
+        return [quiz_category_row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
+def get_quiz_category(category_id):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        row = conn.execute(f"SELECT * FROM quiz_categories WHERE id = {ph}", (category_id,)).fetchone()
+        return quiz_category_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_quiz_questions(category_id):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        rows = conn.execute(
+            f"SELECT * FROM quiz_questions WHERE quiz_category_id = {ph} ORDER BY sort_order ASC",
+            (category_id,),
+        ).fetchall()
+        return [quiz_question_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_quiz_question(question_id):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        row = conn.execute(f"SELECT * FROM quiz_questions WHERE id = {ph}", (question_id,)).fetchone()
+        return quiz_question_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def resolve_category_label(category, group_key):
+    """依 category 代碼組出前端顯示用的頁籤名稱：
+    生化組固定代碼查 CATEGORY_LABELS；其餘組別的代碼是 quiz_categories.id，查資料庫標題。"""
+    if not category:
+        return CATEGORY_LABELS[""]
+    if category in CATEGORY_LABELS:
+        return CATEGORY_LABELS[category]
+    cat = get_quiz_category(category)
+    if cat:
+        return cat["title"]
+    return CATEGORY_LABELS[""]
+
+
+# ----------------------------------------------------------------------------
 # 簡報中繼資料 (slides_meta.json) 存取
 # ---------------------------------------------------------------------------
 def load_meta():
@@ -277,6 +477,7 @@ def init_builtin_meta():
             "title": "2026_生化教育訓練.pptx",
             "desc": "涵蓋一致性作業、異常檢體處理與法定傳染病通報流程之總論教材。",
             "category": "subA1",
+            "group": "grpBio",
             "folder": "subA1",
             "pageCount": 16,
             "isBuiltin": True,
@@ -288,6 +489,7 @@ def init_builtin_meta():
             "title": "2026生化組教育訓練_c503_操作與維護.pptx",
             "desc": "Cobas pro c503 一般作業流程、日常保養與異常訊號故障排除教材。",
             "category": "subA2",
+            "group": "grpBio",
             "folder": "subA2",
             "pageCount": 13,
             "isBuiltin": True,
@@ -299,6 +501,7 @@ def init_builtin_meta():
             "title": "Cobas_b_211_儀器教育訓練.pptx",
             "desc": "Cobas b 211 異常訊號故障排除、管路潤濕與 QC 批號設定教材。",
             "category": "subA3",
+            "group": "grpBio",
             "folder": "subA3",
             "pageCount": 10,
             "isBuiltin": True,
@@ -310,6 +513,7 @@ def init_builtin_meta():
             "title": "Sebia_簡易故障排除指南.pptx",
             "desc": "Sebia 儀器 Cup/Rack 卡住、管路異常與各類警報之簡易故障排除教材。",
             "category": "zoneB",
+            "group": "grpBio",
             "folder": "zoneB",
             "pageCount": 7,
             "isBuiltin": True,
@@ -397,9 +601,11 @@ def api_list_slides():
     for m in load_meta():
         if not m.get("isBuiltin"):
             continue
+        group = normalize_group(m.get("group", DEFAULT_GROUP))
         builtin.append({
             **m,
-            "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""]),
+            "group": group,
+            "categoryLabel": resolve_category_label(m.get("category", ""), group),
             "imageFolder": f"slides/{m['folder']}",
             "downloadUrl": f"/download/{m['id']}",
         })
@@ -407,7 +613,7 @@ def api_list_slides():
     for m in list_uploaded_materials(False):
         uploaded.append({
             **m,
-            "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""]),
+            "categoryLabel": resolve_category_label(m.get("category", ""), m.get("group", DEFAULT_GROUP)),
             "imageFolder": f"uploaded-slides/{m['folder']}",
             "downloadUrl": f"/download/{m['id']}",
         })
@@ -422,10 +628,16 @@ def api_admin_slides():
     items = []
     for m in load_meta():
         if m.get("isBuiltin"):
-            items.append({**m, "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""])})
+            group = normalize_group(m.get("group", DEFAULT_GROUP))
+            items.append({**m, "group": group, "categoryLabel": resolve_category_label(m.get("category", ""), group)})
     for m in list_uploaded_materials(True):
-        items.append({**m, "categoryLabel": CATEGORY_LABELS.get(m.get("category", ""), CATEGORY_LABELS[""])})
+        items.append({**m, "categoryLabel": resolve_category_label(m.get("category", ""), m.get("group", DEFAULT_GROUP))})
     return jsonify(items)
+
+
+@app.get("/api/groups")
+def api_list_groups():
+    return jsonify([{"key": k, "label": v} for k, v in GROUPS.items()])
 
 
 @app.get("/uploaded-slides/<folder>/<path:filename>")
@@ -463,9 +675,17 @@ def api_upload_slide():
         return jsonify({"error": "未收到檔案"}), 400
 
     file = request.files["file"]
+    group = normalize_group(request.form.get("group", DEFAULT_GROUP))
     category = request.form.get("category", "")
-    if category not in CATEGORY_LABELS:
-        category = ""
+    # 生化組沿用固定頁籤代碼；其餘組別的 category 代碼是 quiz_categories.id，
+    # 只要能在該表查到（且屬於同一組別）即視為合法，否則歸為未分類。
+    if group == DEFAULT_GROUP:
+        if category not in CATEGORY_LABELS:
+            category = ""
+    else:
+        cat = get_quiz_category(category) if category else None
+        if not cat or cat["group"] != group:
+            category = ""
     title = request.form.get("title", "").strip()
     desc = request.form.get("desc", "").strip()
 
@@ -495,6 +715,7 @@ def api_upload_slide():
         "title": title or original_name,
         "description": desc or "管理者上傳之教育訓練補充教材",
         "category": category,
+        "group_key": group,
         "folder": slide_id,
         "page_count": page_count,
         "date_added": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -504,9 +725,9 @@ def api_upload_slide():
     conn, kind = _db_conn()
     try:
         if kind == "postgres":
-            conn.execute("""INSERT INTO materials (id,filename,title,description,category,folder,page_count,date_added,storage_filename,active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", tuple(entry.values()))
+            conn.execute("""INSERT INTO materials (id,filename,title,description,category,group_key,folder,page_count,date_added,storage_filename,active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", tuple(entry.values()))
         else:
-            conn.execute("""INSERT INTO materials (id,filename,title,description,category,folder,page_count,date_added,storage_filename,active) VALUES (?,?,?,?,?,?,?,?,?,?)""", tuple(entry.values()))
+            conn.execute("""INSERT INTO materials (id,filename,title,description,category,group_key,folder,page_count,date_added,storage_filename,active) VALUES (?,?,?,?,?,?,?,?,?,?,?)""", tuple(entry.values()))
     except Exception:
         shutil.rmtree(material_dir, ignore_errors=True)
         shutil.rmtree(out_folder, ignore_errors=True)
@@ -516,9 +737,9 @@ def api_upload_slide():
 
     return jsonify({
         "id": slide_id, "filename": original_name, "title": entry["title"], "desc": entry["description"],
-        "category": category, "folder": slide_id, "pageCount": page_count, "isBuiltin": False,
+        "category": category, "group": group, "folder": slide_id, "pageCount": page_count, "isBuiltin": False,
         "dateAdded": entry["date_added"], "active": True,
-        "categoryLabel": CATEGORY_LABELS.get(category, CATEGORY_LABELS[""]),
+        "categoryLabel": resolve_category_label(category, group),
         "imageFolder": f"uploaded-slides/{slide_id}", "downloadUrl": f"/download/{slide_id}"
     })
 
@@ -534,16 +755,22 @@ def api_update_slide(slide_id):
     data = request.get_json(silent=True) or {}
     title = str(data.get("title", entry["title"])).strip()[:255]
     desc = str(data.get("desc", entry.get("desc", ""))).strip()[:1000]
+    group = normalize_group(str(data.get("group", entry.get("group", DEFAULT_GROUP))))
     category = str(data.get("category", entry.get("category", "")))
     active = bool(data.get("active", entry.get("active", True)))
-    if category not in CATEGORY_LABELS:
-        category = ""
+    if group == DEFAULT_GROUP:
+        if category not in CATEGORY_LABELS:
+            category = ""
+    else:
+        cat = get_quiz_category(category) if category else None
+        if not cat or cat["group"] != group:
+            category = ""
     conn, kind = _db_conn()
     try:
         if kind == "postgres":
-            conn.execute("UPDATE materials SET title=%s, description=%s, category=%s, active=%s WHERE id=%s", (title, desc, category, active, slide_id))
+            conn.execute("UPDATE materials SET title=%s, description=%s, category=%s, group_key=%s, active=%s WHERE id=%s", (title, desc, category, group, active, slide_id))
         else:
-            conn.execute("UPDATE materials SET title=?, description=?, category=?, active=? WHERE id=?", (title, desc, category, int(active), slide_id))
+            conn.execute("UPDATE materials SET title=?, description=?, category=?, group_key=?, active=? WHERE id=?", (title, desc, category, group, int(active), slide_id))
     finally:
         conn.close()
     return jsonify({"ok": True})
@@ -570,6 +797,220 @@ def api_delete_slide(slide_id):
     return jsonify({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# 考題頁籤 (quiz_categories) API —— 生化組以外的組別由後台管理者建立考題頁籤
+# ---------------------------------------------------------------------------
+@app.get("/api/quiz-categories")
+def api_list_quiz_categories():
+    group = request.args.get("group", "")
+    group = group if group in GROUPS else None
+    return jsonify(list_quiz_categories(group_key=group, include_inactive=False))
+
+
+@app.get("/api/quiz-categories/admin")
+def api_admin_list_quiz_categories():
+    denied = require_admin()
+    if denied:
+        return denied
+    group = request.args.get("group", "")
+    group = group if group in GROUPS else None
+    return jsonify(list_quiz_categories(group_key=group, include_inactive=True))
+
+
+@app.post("/api/quiz-categories")
+def api_create_quiz_category():
+    denied = require_admin()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    group = normalize_group(str(data.get("group", DEFAULT_GROUP)))
+    title = str(data.get("title", "")).strip()[:255]
+    desc = str(data.get("desc", "")).strip()[:1000]
+    if not title:
+        return jsonify({"error": "請輸入頁籤名稱"}), 400
+    cat_id = f"cat-{uuid.uuid4().hex[:12]}"
+    conn, kind = _db_conn()
+    try:
+        existing = conn.execute(
+            f"SELECT COALESCE(MAX(sort_order), -1) AS m FROM quiz_categories WHERE group_key = {'%s' if kind == 'postgres' else '?'}",
+            (group,),
+        ).fetchone()
+        next_order = (existing["m"] if isinstance(existing, dict) else existing[0]) + 1
+        date_added = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        if kind == "postgres":
+            conn.execute(
+                "INSERT INTO quiz_categories (id,group_key,title,description,sort_order,date_added,active) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (cat_id, group, title, desc, next_order, date_added, True),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO quiz_categories (id,group_key,title,description,sort_order,date_added,active) VALUES (?,?,?,?,?,?,?)",
+                (cat_id, group, title, desc, next_order, date_added, 1),
+            )
+    finally:
+        conn.close()
+    return jsonify(get_quiz_category(cat_id))
+
+
+@app.patch("/api/quiz-categories/<category_id>")
+def api_update_quiz_category(category_id):
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_quiz_category(category_id)
+    if not entry:
+        return jsonify({"error": "找不到此考題頁籤"}), 404
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title", entry["title"])).strip()[:255]
+    desc = str(data.get("desc", entry.get("desc", ""))).strip()[:1000]
+    active = bool(data.get("active", entry.get("active", True)))
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("UPDATE quiz_categories SET title=%s, description=%s, active=%s WHERE id=%s", (title, desc, active, category_id))
+        else:
+            conn.execute("UPDATE quiz_categories SET title=?, description=?, active=? WHERE id=?", (title, desc, int(active), category_id))
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/quiz-categories/<category_id>")
+def api_delete_quiz_category(category_id):
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_quiz_category(category_id)
+    if not entry:
+        return jsonify({"error": "找不到此考題頁籤"}), 404
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("DELETE FROM quiz_questions WHERE quiz_category_id=%s", (category_id,))
+            conn.execute("DELETE FROM quiz_categories WHERE id=%s", (category_id,))
+            conn.execute("UPDATE materials SET category='' WHERE category=%s", (category_id,))
+        else:
+            conn.execute("DELETE FROM quiz_questions WHERE quiz_category_id=?", (category_id,))
+            conn.execute("DELETE FROM quiz_categories WHERE id=?", (category_id,))
+            conn.execute("UPDATE materials SET category='' WHERE category=?", (category_id,))
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# 考題 (quiz_questions) API —— 每一題屬於某一個 quiz_category
+# ---------------------------------------------------------------------------
+@app.get("/api/quiz-questions")
+def api_list_quiz_questions():
+    category_id = request.args.get("category", "")
+    if not category_id:
+        return jsonify({"error": "缺少 category 參數"}), 400
+    return jsonify(list_quiz_questions(category_id))
+
+
+@app.post("/api/quiz-questions")
+def api_create_quiz_question():
+    denied = require_admin()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    category_id = str(data.get("quizCategoryId", "")).strip()
+    cat = get_quiz_category(category_id)
+    if not cat:
+        return jsonify({"error": "找不到對應的考題頁籤，請先建立頁籤"}), 400
+    question = str(data.get("question", "")).strip()
+    options = data.get("options", [])
+    tag = str(data.get("tag", "")).strip()[:100] or "一般"
+    explanation = str(data.get("explanation", "")).strip()
+    try:
+        correct = int(data.get("correct", 0))
+    except (TypeError, ValueError):
+        correct = 0
+    if not question or not isinstance(options, list) or len(options) < 2:
+        return jsonify({"error": "請輸入題目與至少 2 個選項"}), 400
+    options = [str(o).strip() for o in options][:6]
+    correct = max(0, min(len(options) - 1, correct))
+    q_id = f"q-{uuid.uuid4().hex[:12]}"
+    conn, kind = _db_conn()
+    try:
+        existing = conn.execute(
+            f"SELECT COALESCE(MAX(sort_order), -1) AS m FROM quiz_questions WHERE quiz_category_id = {'%s' if kind == 'postgres' else '?'}",
+            (category_id,),
+        ).fetchone()
+        next_order = (existing["m"] if isinstance(existing, dict) else existing[0]) + 1
+        if kind == "postgres":
+            conn.execute(
+                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,options,correct,explanation,sort_order) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (q_id, category_id, tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,options,correct,explanation,sort_order) VALUES (?,?,?,?,?,?,?,?)",
+                (q_id, category_id, tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
+            )
+    finally:
+        conn.close()
+    return jsonify(get_quiz_question(q_id))
+
+
+@app.patch("/api/quiz-questions/<question_id>")
+def api_update_quiz_question(question_id):
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_quiz_question(question_id)
+    if not entry:
+        return jsonify({"error": "找不到此題目"}), 404
+    data = request.get_json(silent=True) or {}
+    question = str(data.get("question", entry["question"])).strip()
+    options = data.get("options", entry["options"])
+    if not isinstance(options, list) or len(options) < 2:
+        return jsonify({"error": "選項至少需要 2 個"}), 400
+    options = [str(o).strip() for o in options][:6]
+    tag = str(data.get("tag", entry.get("tag", ""))).strip()[:100] or "一般"
+    explanation = str(data.get("explanation", entry.get("explanation", ""))).strip()
+    try:
+        correct = int(data.get("correct", entry.get("correct", 0)))
+    except (TypeError, ValueError):
+        correct = entry.get("correct", 0)
+    correct = max(0, min(len(options) - 1, correct))
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute(
+                "UPDATE quiz_questions SET tag=%s, question=%s, options=%s, correct=%s, explanation=%s WHERE id=%s",
+                (tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE quiz_questions SET tag=?, question=?, options=?, correct=?, explanation=? WHERE id=?",
+                (tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
+            )
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/quiz-questions/<question_id>")
+def api_delete_quiz_question(question_id):
+    denied = require_admin()
+    if denied:
+        return denied
+    entry = get_quiz_question(question_id)
+    if not entry:
+        return jsonify({"error": "找不到此題目"}), 404
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("DELETE FROM quiz_questions WHERE id=%s", (question_id,))
+        else:
+            conn.execute("DELETE FROM quiz_questions WHERE id=?", (question_id,))
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.post("/api/records")
 def api_create_record():
     data = request.get_json(silent=True) or {}
@@ -588,28 +1029,31 @@ def api_create_record():
     record_id = str(data["id"])[:100]
     created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     answers = data.get("answersDetail", [])
+    group_key = normalize_group(str(data.get("groupKey", DEFAULT_GROUP)))
 
     conn, kind = _db_conn()
     try:
         if kind == "postgres":
             conn.execute("""
                 INSERT INTO exam_records
-                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail, group_key)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (id) DO NOTHING
             """, (record_id, created_at, str(data["name"])[:100], str(data["empId"])[:100],
                   str(data["role"])[:100], str(data.get("evaluatorName", ""))[:100],
                   str(data.get("evaluatorTitle", ""))[:100], str(data["quizTitle"])[:255], score,
-                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False)))
+                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False),
+                  group_key))
         else:
             conn.execute("""
                 INSERT OR IGNORE INTO exam_records
-                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                (id, created_at, name, emp_id, role, evaluator_name, evaluator_title, quiz_title, score, status, correct_count, wrong_count, answers_detail, group_key)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (record_id, created_at, str(data["name"])[:100], str(data["empId"])[:100],
                   str(data["role"])[:100], str(data.get("evaluatorName", ""))[:100],
                   str(data.get("evaluatorTitle", ""))[:100], str(data["quizTitle"])[:255], score,
-                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False)))
+                  str(data["status"])[:30], correct_count, wrong_count, json.dumps(answers, ensure_ascii=False),
+                  group_key))
         return jsonify({"ok": True, "id": record_id})
     finally:
         conn.close()

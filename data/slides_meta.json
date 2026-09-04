@@ -8,7 +8,8 @@
     "folder": "subA1",
     "pageCount": 16,
     "isBuiltin": true,
-    "dateAdded": ""
+    "dateAdded": "",
+    "group": "grpBio"
   },
   {
     "id": "builtin-subA2",
@@ -19,7 +20,8 @@
     "folder": "subA2",
     "pageCount": 13,
     "isBuiltin": true,
-    "dateAdded": ""
+    "dateAdded": "",
+    "group": "grpBio"
   },
   {
     "id": "builtin-subA3",
@@ -30,7 +32,8 @@
     "folder": "subA3",
     "pageCount": 10,
     "isBuiltin": true,
-    "dateAdded": ""
+    "dateAdded": "",
+    "group": "grpBio"
   },
   {
     "id": "builtin-zoneB",
@@ -41,6 +44,7 @@
     "folder": "zoneB",
     "pageCount": 7,
     "isBuiltin": true,
-    "dateAdded": ""
+    "dateAdded": "",
+    "group": "grpBio"
   }
 ]
