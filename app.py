@@ -55,12 +55,14 @@ try:
 except OSError:
     MATERIAL_STORAGE = BASE_DIR / "uploads"
 UPLOAD_DIR = MATERIAL_STORAGE / "ppt"
+QUESTION_IMAGES_DIR = MATERIAL_STORAGE / "question_images"
 UPLOADED_SLIDES_DIR = MATERIAL_STORAGE / "slides"
+DOC_TEMPLATES_DIR = MATERIAL_STORAGE / "doc_templates"
 DATA_DIR = BASE_DIR / "data"
 META_FILE = DATA_DIR / "slides_meta.json"
 TMP_DIR = BASE_DIR / "tmp_convert"
 
-for d in (SLIDES_DIR, UPLOAD_DIR, UPLOADED_SLIDES_DIR, DATA_DIR, TMP_DIR):
+for d in (SLIDES_DIR, UPLOAD_DIR, UPLOADED_SLIDES_DIR, DOC_TEMPLATES_DIR, QUESTION_IMAGES_DIR, DATA_DIR, TMP_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # 如果 soffice 不在系統 PATH 中，可用環境變數指定完整路徑，例如：
@@ -286,6 +288,8 @@ def init_quiz_db():
                     quiz_category_id TEXT NOT NULL,
                     tag TEXT NOT NULL DEFAULT '',
                     question TEXT NOT NULL,
+                    question_type TEXT NOT NULL DEFAULT 'choice',
+                    image_url TEXT NOT NULL DEFAULT '',
                     options JSONB NOT NULL,
                     correct INTEGER NOT NULL DEFAULT 0,
                     explanation TEXT NOT NULL DEFAULT '',
@@ -310,6 +314,8 @@ def init_quiz_db():
                     quiz_category_id TEXT NOT NULL,
                     tag TEXT NOT NULL DEFAULT '',
                     question TEXT NOT NULL,
+                    question_type TEXT NOT NULL DEFAULT 'choice',
+                    image_url TEXT NOT NULL DEFAULT '',
                     options TEXT NOT NULL,
                     correct INTEGER NOT NULL DEFAULT 0,
                     explanation TEXT NOT NULL DEFAULT '',
@@ -380,6 +386,8 @@ def quiz_question_row_to_dict(row):
         except json.JSONDecodeError:
             raw_options = []
     r["options"] = raw_options
+    r["questionType"] = r.pop("question_type", "choice")
+    r["imageUrl"] = r.pop("image_url", "")
     r["quizCategoryId"] = r.pop("quiz_category_id", "")
     r["sortOrder"] = int(r.pop("sort_order", 0) or 0)
     return r
@@ -449,6 +457,88 @@ def resolve_category_label(category, group_key):
     if cat:
         return cat["title"]
     return CATEGORY_LABELS[""]
+
+
+# ---------------------------------------------------------------------------
+# 附件1 Word 匯出範本 (doc_templates) —— 每個組別可各自上傳一份空白 .docx 範本，
+# 前端匯出時改用該組別的範本自動填入，取代原本每次都要在瀏覽器手動選檔的方式。
+# 生化組沿用原本前端「選一次、瀏覽器暫存」的既有流程，不受此表影響。
+# ---------------------------------------------------------------------------
+def init_doc_templates_db():
+    conn, kind = _db_conn()
+    try:
+        if kind == "postgres":
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS doc_templates (
+                    group_key TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    storage_filename TEXT NOT NULL,
+                    uploaded_at TEXT NOT NULL
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS doc_templates (
+                    group_key TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    storage_filename TEXT NOT NULL,
+                    uploaded_at TEXT NOT NULL
+                )
+            """)
+    finally:
+        conn.close()
+
+
+def list_doc_templates():
+    conn, kind = _db_conn()
+    try:
+        rows = conn.execute("SELECT * FROM doc_templates").fetchall()
+        return {row["group_key"]: dict(row) for row in rows}
+    finally:
+        conn.close()
+
+
+def get_doc_template_row(group_key):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        row = conn.execute(f"SELECT * FROM doc_templates WHERE group_key = {ph}", (group_key,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def save_doc_template_row(group_key, filename, storage_filename):
+    conn, kind = _db_conn()
+    try:
+        uploaded_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        if kind == "postgres":
+            conn.execute("""
+                INSERT INTO doc_templates (group_key, filename, storage_filename, uploaded_at)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT (group_key) DO UPDATE SET filename=EXCLUDED.filename,
+                    storage_filename=EXCLUDED.storage_filename, uploaded_at=EXCLUDED.uploaded_at
+            """, (group_key, filename, storage_filename, uploaded_at))
+        else:
+            conn.execute("""
+                INSERT INTO doc_templates (group_key, filename, storage_filename, uploaded_at) VALUES (?,?,?,?)
+                ON CONFLICT(group_key) DO UPDATE SET filename=excluded.filename,
+                    storage_filename=excluded.storage_filename, uploaded_at=excluded.uploaded_at
+            """, (group_key, filename, storage_filename, uploaded_at))
+    finally:
+        conn.close()
+
+
+def delete_doc_template_row(group_key):
+    conn, kind = _db_conn()
+    try:
+        ph = "%s" if kind == "postgres" else "?"
+        conn.execute(f"DELETE FROM doc_templates WHERE group_key = {ph}", (group_key,))
+    finally:
+        conn.close()
+
+
+init_doc_templates_db()
 
 
 # ----------------------------------------------------------------------------
@@ -901,6 +991,31 @@ def api_delete_quiz_category(category_id):
 # ---------------------------------------------------------------------------
 # 考題 (quiz_questions) API —— 每一題屬於某一個 quiz_category
 # ---------------------------------------------------------------------------
+@app.post("/api/quiz-question-images")
+def api_upload_question_image():
+    denied = require_admin()
+    if denied: return denied
+    if "file" not in request.files: return jsonify({"error":"缺少圖片檔案"}), 400
+    f=request.files["file"]; ext=Path(f.filename or "").suffix.lower()
+    if ext not in {".png",".jpg",".jpeg",".gif",".webp"}: return jsonify({"error":"僅接受 PNG/JPG/GIF/WEBP"}),400
+    name=f"{uuid.uuid4().hex}{ext}"; f.save(str(QUESTION_IMAGES_DIR/name))
+    return jsonify({"url":f"/question-images/{name}"})
+
+@app.get("/question-images/<path:name>")
+def question_image(name):
+    return send_from_directory(str(QUESTION_IMAGES_DIR), name)
+
+@app.get("/api/quiz-questions/random")
+def api_random_quiz_questions():
+    import random
+    category_id = request.args.get("category", "")
+    try: count = max(1, int(request.args.get("count", "10")))
+    except ValueError: count = 10
+    qs = list_quiz_questions(category_id) if category_id else []
+    random.shuffle(qs)
+    return jsonify(qs[:count])
+
+
 @app.get("/api/quiz-questions")
 def api_list_quiz_questions():
     category_id = request.args.get("category", "")
@@ -920,14 +1035,20 @@ def api_create_quiz_question():
     if not cat:
         return jsonify({"error": "找不到對應的考題頁籤，請先建立頁籤"}), 400
     question = str(data.get("question", "")).strip()
+    question_type = str(data.get("questionType", "choice")).lower()
+    if question_type not in ("choice", "essay"):
+        question_type = "choice"
+    image_url = str(data.get("imageUrl", "")).strip()[:1000]
     options = data.get("options", [])
+    if question_type == "essay":
+        options = []
     tag = str(data.get("tag", "")).strip()[:100] or "一般"
     explanation = str(data.get("explanation", "")).strip()
     try:
         correct = int(data.get("correct", 0))
     except (TypeError, ValueError):
         correct = 0
-    if not question or not isinstance(options, list) or len(options) < 2:
+    if not question or (question_type == "choice" and (not isinstance(options, list) or len(options) < 2)):
         return jsonify({"error": "請輸入題目與至少 2 個選項"}), 400
     options = [str(o).strip() for o in options][:6]
     correct = max(0, min(len(options) - 1, correct))
@@ -941,13 +1062,13 @@ def api_create_quiz_question():
         next_order = (existing["m"] if isinstance(existing, dict) else existing[0]) + 1
         if kind == "postgres":
             conn.execute(
-                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,options,correct,explanation,sort_order) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (q_id, category_id, tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
+                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,question_type,image_url,options,correct,explanation,sort_order) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (q_id, category_id, tag, question, question_type, image_url, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
             )
         else:
             conn.execute(
-                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,options,correct,explanation,sort_order) VALUES (?,?,?,?,?,?,?,?)",
-                (q_id, category_id, tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
+                "INSERT INTO quiz_questions (id,quiz_category_id,tag,question,question_type,image_url,options,correct,explanation,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (q_id, category_id, tag, question, question_type, image_url, json.dumps(options, ensure_ascii=False), correct, explanation, next_order),
             )
     finally:
         conn.close()
@@ -964,8 +1085,12 @@ def api_update_quiz_question(question_id):
         return jsonify({"error": "找不到此題目"}), 404
     data = request.get_json(silent=True) or {}
     question = str(data.get("question", entry["question"])).strip()
+    question_type = str(data.get("questionType", entry.get("questionType", "choice"))).lower()
+    if question_type not in ("choice", "essay"): question_type = "choice"
+    image_url = str(data.get("imageUrl", entry.get("imageUrl", ""))).strip()[:1000]
     options = data.get("options", entry["options"])
-    if not isinstance(options, list) or len(options) < 2:
+    if question_type == "essay": options = []
+    if question_type == "choice" and (not isinstance(options, list) or len(options) < 2):
         return jsonify({"error": "選項至少需要 2 個"}), 400
     options = [str(o).strip() for o in options][:6]
     tag = str(data.get("tag", entry.get("tag", ""))).strip()[:100] or "一般"
@@ -979,13 +1104,13 @@ def api_update_quiz_question(question_id):
     try:
         if kind == "postgres":
             conn.execute(
-                "UPDATE quiz_questions SET tag=%s, question=%s, options=%s, correct=%s, explanation=%s WHERE id=%s",
-                (tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
+                "UPDATE quiz_questions SET tag=%s, question=%s, question_type=%s, image_url=%s, options=%s, correct=%s, explanation=%s WHERE id=%s",
+                (tag, question, question_type, image_url, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
             )
         else:
             conn.execute(
-                "UPDATE quiz_questions SET tag=?, question=?, options=?, correct=?, explanation=? WHERE id=?",
-                (tag, question, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
+                "UPDATE quiz_questions SET tag=?, question=?, question_type=?, image_url=?, options=?, correct=?, explanation=? WHERE id=?",
+                (tag, question, question_type, image_url, json.dumps(options, ensure_ascii=False), correct, explanation, question_id),
             )
     finally:
         conn.close()
@@ -1008,6 +1133,80 @@ def api_delete_quiz_question(question_id):
             conn.execute("DELETE FROM quiz_questions WHERE id=?", (question_id,))
     finally:
         conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# 附件1 Word 匯出範本 (doc_templates) API
+# ---------------------------------------------------------------------------
+DOC_TEMPLATE_ALLOWED_EXT = {".docx"}
+MAX_DOC_TEMPLATE_MB = 20
+
+
+@app.get("/api/doc-templates")
+def api_list_doc_templates():
+    """公開：各組別是否已設定範本（前端匯出前用來判斷要不要先提示管理者上傳）。"""
+    rows = list_doc_templates()
+    return jsonify([
+        {
+            "group": g,
+            "label": label,
+            "exists": g in rows,
+            "filename": rows.get(g, {}).get("filename", ""),
+            "uploadedAt": rows.get(g, {}).get("uploaded_at", ""),
+        }
+        for g, label in GROUPS.items()
+    ])
+
+
+@app.post("/api/doc-templates/<group_key>")
+def api_upload_doc_template(group_key):
+    denied = require_admin()
+    if denied:
+        return denied
+    if group_key not in GROUPS:
+        return jsonify({"error": "無效的組別代碼"}), 400
+    if "file" not in request.files:
+        return jsonify({"error": "缺少檔案"}), 400
+    file = request.files["file"]
+    original_name = file.filename or "附件1.docx"
+    ext = Path(original_name).suffix.lower()
+    if ext not in DOC_TEMPLATE_ALLOWED_EXT:
+        return jsonify({"error": "僅接受 .docx 檔案"}), 400
+    file.seek(0, os.SEEK_END)
+    size_mb = file.tell() / (1024 * 1024)
+    file.seek(0)
+    if size_mb > MAX_DOC_TEMPLATE_MB:
+        return jsonify({"error": f"檔案過大，上限 {MAX_DOC_TEMPLATE_MB}MB"}), 400
+    storage_filename = f"{group_key}.docx"
+    file.save(str(DOC_TEMPLATES_DIR / storage_filename))
+    save_doc_template_row(group_key, original_name, storage_filename)
+    return jsonify({"ok": True, "group": group_key, "filename": original_name})
+
+
+@app.get("/api/doc-templates/<group_key>/download")
+def api_download_doc_template(group_key):
+    """公開：前端用 fetch + docxtemplater 取範本二進位內容並在瀏覽器端填入匯出。"""
+    row = get_doc_template_row(group_key)
+    if not row:
+        return jsonify({"error": "此組別尚未上傳 Word 匯出範本"}), 404
+    path = DOC_TEMPLATES_DIR / row["storage_filename"]
+    if not path.exists():
+        return jsonify({"error": "範本檔案遺失，請管理者重新上傳"}), 404
+    return send_file(path, as_attachment=False, download_name=row["filename"])
+
+
+@app.delete("/api/doc-templates/<group_key>")
+def api_delete_doc_template(group_key):
+    denied = require_admin()
+    if denied:
+        return denied
+    row = get_doc_template_row(group_key)
+    if row:
+        path = DOC_TEMPLATES_DIR / row["storage_filename"]
+        if path.exists():
+            path.unlink()
+        delete_doc_template_row(group_key)
     return jsonify({"ok": True})
 
 

@@ -7,13 +7,10 @@ services:
     numInstances: 1
     healthCheckPath: /health
     autoDeployTrigger: commit
-
     envVars:
       - key: DATABASE_URL
         sync: false
-
       - key: ADMIN_KEY
         sync: false
-
       - key: MATERIAL_STORAGE
         value: /var/data/materials

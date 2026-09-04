@@ -47,6 +47,8 @@
 
     <!-- Hidden file input used to let the admin pick 附件1.docx manually -->
     <input type="file" id="docx-template-input" accept=".docx" style="display:none">
+    <!-- Hidden file input used by admin to upload each group's own blank 附件1 Word template -->
+    <input type="file" id="admin-doc-template-upload-input" accept=".docx" style="display:none">
 
     <!-- Top Navigation Header -->
     <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
@@ -404,6 +406,22 @@
                     </div>
 
                     <div id="admin-quiz-categories-list" class="space-y-3"></div>
+                </section>
+
+                <section class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <div>
+                        <h4 class="font-bold text-amber-900">📄 各組別 Word 匯出範本（附件1）</h4>
+                        <p class="text-xs text-amber-700 mt-1">生化組沿用原本「匯出時於瀏覽器選一次附件1.docx」的方式，不受此區影響。其餘 5 組別請在這裡先上傳一份空白的附件1 Word 範本，之後該組別的 Word 匯出會自動抓取此範本並直接填入資料匯出，不需再手動選檔。範本內請使用與生化組相同的 docxtemplater 佔位字（例如 {name}、{empId}、{score}…），詳見下方說明。</p>
+                    </div>
+                    <div id="admin-doc-templates-list" class="space-y-2"></div>
+                    <details class="text-xs text-amber-700">
+                        <summary class="cursor-pointer font-semibold">範本可用的佔位字說明</summary>
+                        <div class="mt-1.5 pl-3 space-y-0.5">
+                            <p>{name} 姓名　{empId} 工號　{role} 身份核取文字　{evaluator} 評核者　{evaluatorTitle} 評核者職稱核取文字</p>
+                            <p>{score} / {evaluationScore} 成績　{passingScore} 及格分數(80)　{correctCount} 答對題數　{wrongCount} 答錯題數　{totalQuestions} 總題數　{status} / {result} 合格狀態</p>
+                            <p>{#questions}{num}. {questionText} — 作答：{userAnswer}{/questions} 逐題列表（迴圈區塊）</p>
+                        </div>
+                    </details>
                 </section>
 
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -1544,6 +1562,7 @@
                         <div class="bg-slate-50 rounded-lg p-2.5 space-y-1.5">
                             <p class="text-xs font-semibold text-slate-600">➕ 新增題目</p>
                             <input id="qform-${c.id}-question" type="text" placeholder="題目內容" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
+                            <div class="flex gap-2"><select id="qform-${c.id}-type" class="px-2 py-1.5 border rounded-lg text-xs"><option value="choice">選擇題</option><option value="essay">問答題</option></select><input id="qform-${c.id}-image" type="file" accept="image/*" class="text-xs"></div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                 <input id="qform-${c.id}-opt0" type="text" placeholder="選項 A" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
                                 <input id="qform-${c.id}-opt1" type="text" placeholder="選項 B" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs">
@@ -1662,12 +1681,15 @@
             const key = await getAdminKey();
             if (!key) return;
             const question = document.getElementById(`qform-${catId}-question`).value.trim();
+            const questionType = document.getElementById(`qform-${catId}-type`).value;
+            let imageUrl = ''; const imageFile = document.getElementById(`qform-${catId}-image`).files[0];
+            if (imageFile) { const fd=new FormData(); fd.append('file', imageFile); const ir=await fetch('/api/quiz-question-images',{method:'POST',headers:{'X-Admin-Key':key},body:fd}); const idata=await ir.json(); if(!ir.ok){alert(idata.error||'圖片上傳失敗');return;} imageUrl=idata.url; }
             const options = [0, 1, 2, 3].map(i => document.getElementById(`qform-${catId}-opt${i}`).value.trim()).filter(Boolean);
             const correct = parseInt(document.getElementById(`qform-${catId}-correct`).value, 10) || 0;
             const tag = document.getElementById(`qform-${catId}-tag`).value.trim();
             const explanation = document.getElementById(`qform-${catId}-explain`).value.trim();
-            if (!question || options.length < 2) { alert('請輸入題目內容，並至少填寫 2 個選項。'); return; }
-            const res = await fetch('/api/quiz-questions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ quizCategoryId: catId, question, options, correct, tag, explanation }) });
+            if (!question || (questionType==='choice' && options.length < 2)) { alert('請輸入題目內容，選擇題至少填寫 2 個選項。'); return; }
+            const res = await fetch('/api/quiz-questions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key }, body: JSON.stringify({ quizCategoryId: catId, question, questionType, imageUrl, options, correct, tag, explanation }) });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) { alert(data.error || '新增失敗'); return; }
             ['question', 'opt0', 'opt1', 'opt2', 'opt3', 'tag', 'explain'].forEach(f => { const el = document.getElementById(`qform-${catId}-${f}`); if (el) el.value = ''; });
@@ -1715,6 +1737,75 @@
             if (!res.ok) { alert(data.error || '刪除失敗'); return; }
             await loadQuizQuestionsIntoPanel(catId);
             delete allQuizData[catId];
+        }
+
+        // ==================================================================
+        // 管理者後台：各組別 Word 匯出範本 (doc_templates) 管理
+        // 生化組不在此清單顯示，沿用原本前端「匯出時瀏覽器選一次檔案」的方式。
+        // ==================================================================
+        let cachedDocTemplatesMeta = [];
+        let pendingDocTemplateUploadGroup = null;
+
+        async function renderAdminDocTemplates() {
+            const box = document.getElementById('admin-doc-templates-list');
+            if (!box) return;
+            box.innerHTML = '<p class="text-xs text-slate-400">讀取範本設定中…</p>';
+            try {
+                const res = await fetch('/api/doc-templates');
+                const list = await res.json();
+                cachedDocTemplatesMeta = list;
+                const rows = list.filter(g => g.group !== 'grpBio');
+                box.innerHTML = rows.map(g => `
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-amber-200 rounded-xl p-2.5 bg-white">
+                        <div class="min-w-0">
+                            <span class="font-bold text-sm text-slate-800">${escapeHtml(g.label)}</span>
+                            ${g.exists
+                                ? `<span class="text-xs text-emerald-700 ml-2">✅ 已設定：${escapeHtml(g.filename)}（${escapeHtml(g.uploadedAt)}）</span>`
+                                : `<span class="text-xs text-slate-400 ml-2">尚未上傳範本</span>`}
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button onclick="adminTriggerDocTemplateUpload('${g.group}')" class="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg">⬆️ ${g.exists ? '重新上傳' : '上傳範本'}</button>
+                            ${g.exists ? `<button onclick="adminDeleteDocTemplate('${g.group}')" class="text-xs bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg">🗑️ 刪除</button>` : ''}
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                box.innerHTML = `<p class="text-xs text-rose-500">❌ ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function adminTriggerDocTemplateUpload(groupKey) {
+            pendingDocTemplateUploadGroup = groupKey;
+            document.getElementById('admin-doc-template-upload-input').click();
+        }
+
+        document.getElementById('admin-doc-template-upload-input').addEventListener('change', async function (e) {
+            const file = e.target.files[0];
+            e.target.value = '';
+            const groupKey = pendingDocTemplateUploadGroup;
+            pendingDocTemplateUploadGroup = null;
+            if (!file || !groupKey) return;
+            const key = await getAdminKey();
+            if (!key) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const res = await fetch(`/api/doc-templates/${groupKey}`, { method: 'POST', headers: { 'X-Admin-Key': key }, body: fd });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || '上傳失敗');
+                await renderAdminDocTemplates();
+            } catch (err) {
+                alert(`❌ ${err.message}`);
+            }
+        });
+
+        async function adminDeleteDocTemplate(groupKey) {
+            if (!confirm('確定刪除此組別的 Word 匯出範本？')) return;
+            const key = await getAdminKey();
+            if (!key) return;
+            const res = await fetch(`/api/doc-templates/${groupKey}`, { method: 'DELETE', headers: { 'X-Admin-Key': key } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { alert(data.error || '刪除失敗'); return; }
+            await renderAdminDocTemplates();
         }
 
         async function adminUploadMaterials() {
@@ -1801,6 +1892,7 @@
                 if (quizSel) quizSel.value = currentGroupKey;
                 await refreshAdminMaterialCategoryOptions();
                 await renderAdminQuizCategories();
+                await renderAdminDocTemplates();
                 await renderAdminMaterials();
                 await renderAdminTable();
                 modal.classList.remove('hidden');
@@ -1855,6 +1947,9 @@
         }
 
         // --- 附件1 匯出功能 (支援後台直接匯出或目前頁籤即時匯出) ---
+        // 生化組：沿用原本「匯出時於瀏覽器選一次附件1.docx，之後快取沿用」的方式。
+        // 其餘 5 組別：改用管理者已上傳到伺服器的該組別空白範本，自動抓取並直接填入匯出，
+        // 不需要每次匯出都手動選檔。
         let cachedTemplateBuffer = null;
         let adminRecords = [];
         let adminKey = sessionStorage.getItem('admin_key') || '';
@@ -1873,6 +1968,97 @@
             return `${leader}組長 ${assigned}指派合格醫檢師`;
         }
 
+        // 組出目前頁籤（作答中）的匯出資料與檔名
+        function buildCurrentTabDocPayload() {
+            const nameInput = document.getElementById('examinee-name').value.trim();
+            const idInput = document.getElementById('examinee-id').value.trim();
+            const roleInput = document.getElementById('examinee-role').value;
+            const quizList = allQuizData[currentCatKey].questions;
+            const userAnswers = userAnswersMap[currentCatKey];
+
+            const optionLetters = ['A', 'B', 'C', 'D'];
+            const answersDetail = quizList.map((q, idx) => ({
+                num: idx + 1,
+                questionText: q.question,
+                userAnswer: userAnswers[idx] !== null ? optionLetters[userAnswers[idx]] : '未作答'
+            }));
+            const correctCount = quizList.reduce((count, q, idx) => count + (userAnswers[idx] === q.correct ? 1 : 0), 0);
+            const evaluationScore = quizList.length > 0 ? Math.round((correctCount / quizList.length) * 100) : 0;
+            const evaluationStatus = evaluationScore >= 80 ? '合格' : '不合格';
+
+            return {
+                payload: {
+                    name: nameInput, empId: idInput, role: buildRoleCheckboxText(roleInput),
+                    evaluator: FIXED_EVALUATOR_NAME, evaluatorTitle: buildEvaluatorTitleCheckboxText(FIXED_EVALUATOR_TITLE),
+                    score: evaluationScore, evaluationScore: evaluationScore, passingScore: 80,
+                    correctCount: correctCount, wrongCount: quizList.length - correctCount,
+                    totalQuestions: quizList.length, status: evaluationStatus, result: evaluationStatus,
+                    questions: answersDetail
+                },
+                filenamePart: `${GROUPS[currentGroupKey].label}年度人員能力考核表_${allQuizData[currentCatKey].title}_${nameInput}`
+            };
+        }
+
+        // 組出後台某一筆已存檔成績的匯出資料與檔名
+        function buildRecordDocPayload(rec) {
+            const recordScore = Number.isFinite(Number(rec.score)) ? Number(rec.score) : 0;
+            const recordStatus = recordScore >= 80 ? '合格' : '不合格';
+            const recordAnswers = Array.isArray(rec.answersDetail) ? rec.answersDetail : [];
+            const recordCorrect = recordAnswers.filter(a => a.isCorrect === true).length;
+            const groupLabel = (GROUPS[rec.groupKey] || GROUPS.grpBio).label;
+
+            return {
+                payload: {
+                    name: rec.name, empId: rec.empId, role: buildRoleCheckboxText(rec.role),
+                    evaluator: rec.evaluatorName || FIXED_EVALUATOR_NAME, evaluatorTitle: buildEvaluatorTitleCheckboxText(rec.evaluatorTitle),
+                    score: recordScore, evaluationScore: recordScore, passingScore: 80,
+                    correctCount: recordCorrect, wrongCount: Math.max(recordAnswers.length - recordCorrect, 0),
+                    totalQuestions: recordAnswers.length, status: rec.status || recordStatus, result: rec.status || recordStatus,
+                    questions: recordAnswers
+                },
+                filenamePart: `${groupLabel}年度人員能力考核表_${rec.name}_${rec.empId}`
+            };
+        }
+
+        // 用給定的範本二進位內容 (ArrayBuffer) 填入資料並下載，成功回傳 true
+        function renderDocxFromBuffer(templateBuffer, payload, filenamePart) {
+            try {
+                const zip = new PizZip(templateBuffer);
+                const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+                doc.render(payload);
+                const blob = doc.getZip().generate({
+                    type: "blob",
+                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                });
+                saveAs(blob, `附件1.${filenamePart}.docx`);
+                return true;
+            } catch (error) {
+                console.error(error);
+                alert(`匯出失敗：
+${error.message}
+
+請確認範本檔案格式正確（.docx，且佔位字未被 Word 自動校正拆散）。`);
+                return false;
+            }
+        }
+
+        // 依組別代碼向伺服器抓取該組已上傳的空白範本並直接匯出
+        async function exportWithServerTemplate(groupKey, payload, filenamePart) {
+            try {
+                const res = await fetch(`/api/doc-templates/${groupKey}/download`);
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    alert(data.error || `「${GROUPS[groupKey].label}」尚未上傳 Word 匯出範本，請洽管理者於後台「📄 各組別 Word 匯出範本」上傳空白附件1.docx。`);
+                    return;
+                }
+                const buffer = await res.arrayBuffer();
+                renderDocxFromBuffer(buffer, payload, filenamePart);
+            } catch (err) {
+                console.error(err);
+                alert(`讀取範本失敗：${err.message}`);
+            }
+        }
+
         function exportCurrentTabToWord() {
             const nameInput = document.getElementById('examinee-name').value.trim();
             const idInput = document.getElementById('examinee-id').value.trim();
@@ -1881,6 +2067,12 @@
             if (!nameInput || !idInput || !roleInput) {
                 alert('請先於上方填寫「考核者姓名」「員工工號」「受測者身份」再執行匯出！');
                 document.getElementById('examinee-name').focus();
+                return;
+            }
+
+            if (currentGroupKey !== 'grpBio') {
+                const { payload, filenamePart } = buildCurrentTabDocPayload();
+                exportWithServerTemplate(currentGroupKey, payload, filenamePart);
                 return;
             }
 
@@ -1894,64 +2086,23 @@
         }
 
         function generateCurrentTabWord() {
-            const nameInput = document.getElementById('examinee-name').value.trim();
-            const idInput = document.getElementById('examinee-id').value.trim();
-            const roleInput = document.getElementById('examinee-role').value;
-            const quizList = allQuizData[currentCatKey].questions;
-            const userAnswers = userAnswersMap[currentCatKey];
-
-            const optionLetters = ['A', 'B', 'C', 'D'];
-            const answersDetail = quizList.map((q, idx) => ({
-                num: idx + 1,
-                questionText: q.question,
-                userAnswer: userAnswers[idx] !== null ? optionLetters[userAnswers[idx]] : '未作答'
-            }));
-
-            try {
-                const zip = new PizZip(cachedTemplateBuffer);
-                const doc = new window.docxtemplater(zip, {
-                    paragraphLoop: true,
-                    linebreaks: true,
-                });
-
-                const correctCount = quizList.reduce((count, q, idx) => count + (userAnswers[idx] === q.correct ? 1 : 0), 0);
-                const evaluationScore = quizList.length > 0 ? Math.round((correctCount / quizList.length) * 100) : 0;
-                const evaluationStatus = evaluationScore >= 80 ? '合格' : '不合格';
-
-                doc.render({
-                    name: nameInput,
-                    empId: idInput,
-                    role: buildRoleCheckboxText(roleInput),
-                    evaluator: FIXED_EVALUATOR_NAME,
-                    evaluatorTitle: buildEvaluatorTitleCheckboxText(FIXED_EVALUATOR_TITLE),
-                    score: evaluationScore,
-                    evaluationScore: evaluationScore,
-                    passingScore: 80,
-                    correctCount: correctCount,
-                    wrongCount: quizList.length - correctCount,
-                    totalQuestions: quizList.length,
-                    status: evaluationStatus,
-                    result: evaluationStatus,
-                    questions: answersDetail
-                });
-
-                const blob = doc.getZip().generate({
-                    type: "blob",
-                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                });
-
-                saveAs(blob, `附件1.生化組年度人員能力考核表_${allQuizData[currentCatKey].title}_${nameInput}.docx`);
-            } catch (error) {
-                console.error(error);
-                alert(`匯出失敗：
-${error.message}
-
-請確認選擇的檔案是正確的「附件1.docx」範本。`);
+            const { payload, filenamePart } = buildCurrentTabDocPayload();
+            if (!renderDocxFromBuffer(cachedTemplateBuffer, payload, filenamePart)) {
                 cachedTemplateBuffer = null;
             }
         }
 
         function exportRecordToWord(recordIndex) {
+            const rec = adminRecords[recordIndex];
+            if (!rec) { alert('找不到這筆伺服器成績，請重新整理後台。'); return; }
+            const groupKey = rec.groupKey || 'grpBio';
+
+            if (groupKey !== 'grpBio') {
+                const { payload, filenamePart } = buildRecordDocPayload(rec);
+                exportWithServerTemplate(groupKey, payload, filenamePart);
+                return;
+            }
+
             isExportingCurrentTab = false;
             if (cachedTemplateBuffer) {
                 generateWordFromTemplate(recordIndex);
@@ -1965,46 +2116,8 @@ ${error.message}
         function generateWordFromTemplate(recordIndex) {
             const rec = adminRecords[recordIndex];
             if (!rec) { alert('找不到這筆伺服器成績，請重新整理後台。'); return; }
-
-            try {
-                const zip = new PizZip(cachedTemplateBuffer);
-                const doc = new window.docxtemplater(zip, {
-                    paragraphLoop: true,
-                    linebreaks: true,
-                });
-
-                const recordScore = Number.isFinite(Number(rec.score)) ? Number(rec.score) : 0;
-                const recordStatus = recordScore >= 80 ? '合格' : '不合格';
-                const recordAnswers = Array.isArray(rec.answersDetail) ? rec.answersDetail : [];
-                const recordCorrect = recordAnswers.filter(a => a.userAnswer && a.userAnswer !== '未答' && a.isCorrect === true).length;
-
-                doc.render({
-                    name: rec.name,
-                    empId: rec.empId,
-                    role: buildRoleCheckboxText(rec.role),
-                    evaluator: rec.evaluatorName || FIXED_EVALUATOR_NAME,
-                    evaluatorTitle: buildEvaluatorTitleCheckboxText(rec.evaluatorTitle),
-                    score: recordScore,
-                    evaluationScore: recordScore,
-                    passingScore: 80,
-                    correctCount: recordCorrect,
-                    wrongCount: Math.max(recordAnswers.length - recordCorrect, 0),
-                    totalQuestions: recordAnswers.length,
-                    status: rec.status || recordStatus,
-                    result: rec.status || recordStatus,
-                    questions: record.answersDetail
-                });
-
-                const blob = doc.getZip().generate({
-                    type: "blob",
-                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                });
-
-                saveAs(blob, `附件1.生化組年度人員能力考核表_${rec.name}_${rec.empId}.docx`);
-            } catch (error) {
-                console.error(error);
-                alert(`匯出失敗：
-${error.message}`);
+            const { payload, filenamePart } = buildRecordDocPayload(rec);
+            if (!renderDocxFromBuffer(cachedTemplateBuffer, payload, filenamePart)) {
                 cachedTemplateBuffer = null;
             }
         }
